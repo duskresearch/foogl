@@ -1,0 +1,28 @@
+{
+  "name": "shortener",
+  "version": "0.2.0",
+  "private": true,
+  "description": "A beautifully simple, one-click self-hosted link shortener.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "npm run db:migrate:remote && wrangler deploy",
+    "db:create": "wrangler d1 create foogl-db",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
+  },
+  "dependencies": {
+    "hono": "^4.6.14",
+    "qrcode-svg": "^1.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "wrangler": "^4.0.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "SITE_PASSWORD": {
+        "description": "The password for your dashboard. Pick a strong one (12+ characters) — this is the only thing standing between the public and your link manager."
+      }
+    }
+  }
+}

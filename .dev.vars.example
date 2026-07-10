@@ -1,0 +1,3 @@
+# Copy this to `.dev.vars` for local development.
+# The one-click deploy reads the KEYS here to know which secrets to ask you for.
+SITE_PASSWORD=
