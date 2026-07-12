@@ -37,7 +37,7 @@ export function loginPage(error?: string): string {
   return layout('Sign in', `
   <main class="login-wrap">
     <form class="login-card" method="post" action="/login">
-      <div class="brand center"><span class="dot"></span><h1>Links</h1></div>
+      <div class="brand center"><span class="dot"></span><h1 class="wm">foogl</h1></div>
       <p class="sub center">Enter your password to continue.</p>
       ${error ? `<div class="banner">${LOGIN_ERRORS[error] ?? 'Could not sign in.'}</div>` : ''}
       <input class="url" name="password" type="password" placeholder="Password" autofocus required />
@@ -81,7 +81,7 @@ export function dashboardPage(links: LinkRow[], origin: string, error?: string):
   <main class="wrap">
     <header class="head">
       <div class="topbar">
-        <div class="brand"><span class="dot"></span><h1>Links</h1></div>
+        <div class="brand"><span class="dot"></span><h1 class="wm">foogl</h1></div>
         <form method="post" action="/logout"><button class="ghost">Log out</button></form>
       </div>
       <p class="sub">Short, sharp links on your own domain.</p>
@@ -153,7 +153,7 @@ export function dashboardPage(links: LinkRow[], origin: string, error?: string):
       </div>
       ${linkList(links, origin)}`}
   </main>`
-  return layout('Links', body)
+  return layout('foogl', body)
 }
 
 function emptyState(origin: string): string {
@@ -248,6 +248,8 @@ a { color: inherit; }
 .brand.center { justify-content: center; }
 .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
 h1 { font-size: 20px; font-weight: 640; letter-spacing: -.01em; margin: 0; }
+/* brand wordmark — lowercase, Departure Mono, matching the foo.gl landing */
+h1.wm { font-family: var(--mono); font-weight: 400; font-size: 18px; letter-spacing: .02em; }
 .sub { color: var(--muted); margin: 8px 0 0; font-size: 14px; }
 .sub.center, .center { text-align: center; }
 .ghost {

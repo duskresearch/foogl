@@ -105,7 +105,7 @@ export function statsPage(d: StatsData): string {
       </form>
     </div>
   </main>`
-  return layout(`/${link.slug} · Links`, body)
+  return layout(`/${link.slug} · foogl`, body)
 }
 
 // ── chart: last 30 days as bars ──
