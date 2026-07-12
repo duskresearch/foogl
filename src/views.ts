@@ -10,9 +10,18 @@ export function layout(title: string, body: string): string {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="robots" content="noindex" />
 <title>${escapeHtml(title)}</title>
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icon-180.png" />
+<meta name="theme-color" content="#ECEBE7" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#070809" media="(prefers-color-scheme: dark)" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="foogl" />
 <style>${css}</style>
 </head>
 <body>${body}<script>${js}</script></body>
@@ -37,12 +46,31 @@ export function loginPage(error?: string): string {
   </main>`)
 }
 
+// ── first-run setup (shown when SITE_PASSWORD is not set yet) ───────────────
+export function setupPage(): string {
+  return layout('Finish setting up foogl', `
+  <main class="login-wrap">
+    <div class="login-card setup">
+      <div class="brand center"><span class="dot"></span><h1>Almost there.</h1></div>
+      <p class="sub center">foogl is deployed. It just needs a dashboard password before you can sign in.</p>
+      <ol class="steps">
+        <li>Open this Worker in the <b>Cloudflare dashboard</b>.</li>
+        <li>Go to <b>Settings → Variables and Secrets</b>.</li>
+        <li>Add a <b>Secret</b> named <code>SITE_PASSWORD</code>, give it a strong value, and click <b>Deploy</b>.</li>
+        <li>Come back here, reload, and sign in.</li>
+      </ol>
+      <a class="ghost setup-reload" href="/login">Reload</a>
+    </div>
+  </main>`)
+}
+
 // ── dashboard ──────────────────────────────────────────────────────────────
 const ERRORS: Record<string, string> = {
   badurl: 'That doesn’t look like a valid http(s) link.',
   badslug: 'A custom slug can only use letters, numbers, - and _.',
   taken: 'That slug is already in use. Try another.',
   reserved: 'That slug is reserved. Try another.',
+  badexp: 'The expiry date isn’t valid.',
 }
 
 export function dashboardPage(links: LinkRow[], origin: string, error?: string): string {
@@ -79,24 +107,63 @@ export function dashboardPage(links: LinkRow[], origin: string, error?: string):
           <input name="og_image" type="url" placeholder="Image URL (https://…)" autocomplete="off" />
         </div>
       </details>
+      <details class="more">
+        <summary>Link options <span class="opt">optional</span></summary>
+        <div class="more-body">
+          <label class="field">
+            <span class="flabel">Expires on <span class="opt-inline">— stops working after this day</span></span>
+            <input name="expires_at" type="date" autocomplete="off" />
+          </label>
+          <label class="check">
+            <input type="checkbox" name="passthrough" value="1" />
+            <span><b>Forward query parameters.</b> Anything after <code>?</code> on the short link is added to the destination — handy for <code>utm_*</code> tags.</span>
+          </label>
+          <label class="check">
+            <input type="checkbox" name="permanent" value="1" />
+            <span><b>Permanent redirect (301).</b> Faster, but browsers cache it hard. Use only when the destination will never change.</span>
+          </label>
+          <label class="check">
+            <input type="checkbox" name="hide_referrer" value="1" />
+            <span><b>Hide referrer.</b> The destination won't see that the visitor came from your link.</span>
+          </label>
+        </div>
+      </details>
+      <details class="more utm">
+        <summary>UTM tags <span class="opt">optional</span></summary>
+        <div class="more-body">
+          <p class="hint">Bake campaign tags onto the destination. They're added when you shorten.</p>
+          <div class="utm-grid">
+            <input class="utm-f" data-utm="utm_source" type="text" placeholder="Source (e.g. twitter)" autocomplete="off" />
+            <input class="utm-f" data-utm="utm_medium" type="text" placeholder="Medium (e.g. social)" autocomplete="off" />
+            <input class="utm-f" data-utm="utm_campaign" type="text" placeholder="Campaign (e.g. launch)" autocomplete="off" />
+            <input class="utm-f" data-utm="utm_term" type="text" placeholder="Term (optional)" autocomplete="off" />
+            <input class="utm-f" data-utm="utm_content" type="text" placeholder="Content (optional)" autocomplete="off" />
+          </div>
+          <p class="utm-preview" hidden></p>
+        </div>
+      </details>
     </form>
 
-    ${links.length === 0 ? emptyState() : `
+    ${links.length === 0 ? emptyState(origin) : `
       <div class="count-strip">
         <span><b>${links.length}</b> ${links.length === 1 ? 'link' : 'links'}</span>
         <span class="sep">·</span>
         <span><b>${totalClicks.toLocaleString('en-US')}</b> total clicks</span>
+        <a class="export" href="/links.csv">Export CSV ↓</a>
       </div>
       ${linkList(links, origin)}`}
   </main>`
   return layout('Links', body)
 }
 
-function emptyState(): string {
+function emptyState(origin: string): string {
+  const host = origin.replace(/^https?:\/\//, '')
+  const onWorkersDev = /\.workers\.dev$/i.test(host)
   return `<div class="empty">
     <div class="empty-mark"></div>
-    <p>No links yet.</p>
-    <span>Paste a URL above and you’ll get a short one instantly.</span>
+    <p>You're live.</p>
+    <span>Your short links will look like <code>${escapeHtml(host)}/your-slug</code>. Paste a URL above to make your first one.</span>
+    ${onWorkersDev ? `<div class="tip"><b>Want branded links</b> like <code>go.yourbrand.com/launch</code>? Add your own domain in <b>Cloudflare → this Worker → Settings → Domains &amp; Routes</b>, then it becomes your short-link home.</div>` : ''}
   </div>`
 }
 
@@ -148,24 +215,30 @@ export function escapeAttr(s: string): string {
 // Styles — neutral, calm, one accent. Auto light/dark.
 // ─────────────────────────────────────────────────────────────────────────
 const css = `
+@font-face{font-family:"Departure Mono";src:url("/_f/dm.woff2") format("woff2");font-weight:400;font-display:swap}
 :root {
-  --bg: #fbfbfa; --panel: #ffffff; --ink: #1a1a19; --muted: #8a8a85;
-  --line: #ececea; --accent: #3d5afe; --accent-soft: #eef1ff; --danger: #d1453b;
-  --radius: 12px; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.04);
+  --bg:#ECEBE7; --panel:#FFFFFF; --sunken:#F1F0ED; --ink:#16181B; --secondary:#5B636E; --muted:#8A929C;
+  --line:#E6E7E9; --line-strong:#D5D7DA; --accent:#1A7F37; --accent-fg:#FFFFFF;
+  --accent-soft:rgba(26,127,55,.10); --danger:#C0362C;
+  --radius:12px; --shadow:0 1px 2px rgba(16,18,21,.06), 0 4px 12px rgba(16,18,21,.07);
+  --mono:"Departure Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0e0e0f; --panel: #171718; --ink: #f2f2f0; --muted: #7c7c78;
-    --line: #262627; --accent: #7c8bff; --accent-soft: #1b1e33; --danger: #f2665b;
-    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+    --bg:#070809; --panel:#0C0E11; --sunken:#050607; --ink:#ECEEF0; --secondary:#9AA0A6; --muted:#5C636B;
+    --line:#1E2329; --line-strong:#2A3036; --accent:#3FCF5E; --accent-fg:#07140B;
+    --accent-soft:rgba(63,207,94,.13); --danger:#F0726A;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 28px rgba(0,0,0,.5);
+    color-scheme: dark;
   }
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body {
   background: var(--bg); color: var(--ink);
-  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased; letter-spacing: -.01em;
 }
 a { color: inherit; }
 .wrap { max-width: 680px; margin: 0 auto; padding: 64px 24px 120px; }
@@ -207,10 +280,10 @@ input::placeholder { color: var(--muted); }
   border: 1px solid var(--line); border-radius: 9px; overflow: hidden; transition: border-color .15s, box-shadow .15s;
 }
 .slug-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.slug-host { flex-shrink: 0; padding: 11px 2px 11px 13px; color: var(--muted); font-size: 13px; font-family: ui-monospace, "SF Mono", Menlo, monospace; white-space: nowrap; }
+.slug-host { flex-shrink: 0; padding: 11px 2px 11px 13px; color: var(--muted); font-size: 13px; font-family: var(--mono); white-space: nowrap; }
 .slug-field input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); padding: 11px 13px 11px 2px; font-size: 14px; outline: none; }
 .create button[type=submit], .login-card button {
-  border: 0; background: var(--accent); color: #fff; font-weight: 560; font-size: 14px;
+  border: 0; background: var(--accent); color: var(--accent-fg); font-weight: 560; font-size: 14px;
   padding: 0 20px; border-radius: 9px; cursor: pointer; transition: filter .15s, transform .05s;
 }
 .create button[type=submit] { padding: 11px 20px; }
@@ -235,6 +308,35 @@ input::placeholder { color: var(--muted); }
   border-radius: 9px; padding: 10px 13px; font-size: 14px; outline: none; transition: border-color .15s, box-shadow .15s;
 }
 .more-body input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.field { display: grid; gap: 6px; }
+.flabel { font-size: 12px; color: var(--muted); }
+.opt-inline { opacity: .8; }
+.more-body input[type=date] { color-scheme: light dark; max-width: 220px; }
+.check { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; color: var(--muted); line-height: 1.5; cursor: pointer; }
+.check input[type=checkbox] { margin: 2px 0 0; accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; }
+.check b { color: var(--ink); font-weight: 600; }
+.check code { font-family: var(--mono); font-size: .92em; background: var(--sunken); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+.utm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.utm-grid .utm-f:nth-child(3) { grid-column: 1 / -1; }
+.utm-preview { margin: 10px 0 0; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; color: var(--secondary); word-break: break-all; background: var(--sunken); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+
+/* export link in the count strip */
+.export { margin-left: auto; color: var(--muted); text-decoration: none; font-size: 12.5px; border-bottom: 1px solid var(--line); }
+.export:hover { color: var(--accent); border-color: var(--accent); }
+
+/* targeting rules editor (on the manage page) */
+.rules-json { width: 100%; min-height: 84px; border: 1px solid var(--line); background: var(--sunken); color: var(--ink); border-radius: 9px; padding: 10px 13px; font: 12px/1.5 var(--mono); outline: none; resize: vertical; }
+.rules-json:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.js-on .rules-json { display: none; }
+.rules { display: grid; gap: 8px; }
+.rule-row { display: grid; grid-template-columns: 116px 96px 1fr 30px; gap: 7px; align-items: center; }
+.rule-row select, .rule-row input { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 8px; padding: 9px 10px; font-size: 13px; outline: none; min-width: 0; }
+.rule-row select:focus, .rule-row input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.rule-row .rm { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 8px; padding: 8px 0; cursor: pointer; font-size: 14px; line-height: 1; }
+.rule-row .rm:hover { color: var(--danger); border-color: var(--danger); }
+.rule-add { align-self: start; border: 1px dashed var(--line); background: transparent; color: var(--muted); font-size: 12.5px; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+.rule-add:hover { color: var(--ink); border-color: var(--muted); }
+.rules-hint { color: var(--muted); font-size: 12px; margin: 0 0 2px; line-height: 1.5; }
 
 /* count strip (numbers-first) */
 .count-strip { color: var(--muted); font-size: 13px; margin: 0 4px 12px; display: flex; gap: 10px; }
@@ -251,7 +353,7 @@ input::placeholder { color: var(--muted); }
 .fav { flex-shrink: 0; border-radius: 5px; }
 .row-main { min-width: 0; flex: 1; }
 .slug-link { text-decoration: none; }
-.slug { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 14px; font-weight: 560; }
+.slug { font-family: var(--mono); font-size: 14px; font-weight: 500; letter-spacing: .01em; }
 .slug-link:hover .slug { color: var(--accent); }
 .dest { display: block; color: var(--muted); font-size: 13px; text-decoration: none; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dest:hover { color: var(--accent); }
@@ -272,6 +374,16 @@ input::placeholder { color: var(--muted); }
 .empty-mark::after { content: ""; position: absolute; inset: 12px; border-radius: 4px; background: var(--line); }
 .empty p { color: var(--ink); font-weight: 560; margin: 0 0 4px; }
 .empty span { font-size: 13px; }
+.empty code, .setup code, .steps code, .rules-hint code { font-family: var(--mono); font-size: .9em; background: var(--sunken); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; color: var(--ink); }
+.empty .tip { max-width: 430px; margin: 20px auto 0; padding: 14px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; font-size: 13px; line-height: 1.55; color: var(--muted); text-align: left; }
+.empty .tip b { color: var(--ink); font-weight: 600; }
+/* first-run setup */
+.login-card.setup { max-width: 430px; text-align: left; }
+.login-card.setup .brand.center, .login-card.setup .sub.center { text-align: center; }
+.login-card.setup .steps { margin: 2px 0 8px; padding-left: 20px; display: grid; gap: 9px; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+.login-card.setup .steps b { color: var(--ink); font-weight: 600; }
+.login-card.setup .steps li::marker { color: var(--accent); }
+.setup-reload { text-align: center; }
 
 /* login */
 .login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
@@ -316,7 +428,7 @@ input::placeholder { color: var(--muted); }
 .edit input { width: 100%; border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 9px; padding: 10px 13px; font-size: 14px; outline: none; transition: border-color .15s, box-shadow .15s; }
 .edit input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .edit .row-2 { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-top: 4px; }
-.edit button.save { border: 0; background: var(--accent); color: #fff; font-weight: 560; font-size: 14px; padding: 10px 20px; border-radius: 9px; cursor: pointer; }
+.edit button.save { border: 0; background: var(--accent); color: var(--accent-fg); font-weight: 560; font-size: 14px; padding: 10px 20px; border-radius: 9px; cursor: pointer; }
 .edit button.save:hover { filter: brightness(1.06); }
 .qr-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; text-align: center; }
 .qr-card img { width: 160px; height: 160px; border-radius: 8px; background: #fff; padding: 8px; }
@@ -329,6 +441,15 @@ input::placeholder { color: var(--muted); }
 @media (max-width: 560px) {
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .breakdowns, .two-col { grid-template-columns: 1fr; }
+  .wrap { padding: 40px 18px 96px; }
+  .create { grid-template-columns: 1fr; }
+  .create button[type=submit] { width: 100%; }
+  .row { flex-wrap: wrap; }
+  .row-meta { flex-basis: 100%; justify-content: flex-end; padding-left: 32px; }
+  .utm-grid { grid-template-columns: 1fr; }
+  .rule-row { grid-template-columns: 1fr 1fr; }
+  .rule-row .rule-url { grid-column: 1 / -1; }
+  .rule-row .rm { grid-column: 1 / -1; }
 }
 `
 
@@ -349,4 +470,79 @@ document.addEventListener('keydown', (e) => {
     const el = document.querySelector('.create .url'); if (el) { e.preventDefault(); el.focus(); }
   }
 });
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}
+
+/* UTM builder: compose utm_* onto the destination, live preview, bake in on submit. */
+(function(){
+  var urlEl = document.querySelector('.create .url');
+  var utmFields = Array.prototype.slice.call(document.querySelectorAll('.utm-f'));
+  var preview = document.querySelector('.utm-preview');
+  var form = document.querySelector('form.create');
+  if (!urlEl || !utmFields.length || !preview) return;
+  function compose(base){
+    try {
+      var u = new URL(base);
+      utmFields.forEach(function(f){
+        var k = f.getAttribute('data-utm'), v = f.value.trim();
+        if (v) u.searchParams.set(k, v); else u.searchParams.delete(k);
+      });
+      return u.toString();
+    } catch(_) { return null; }
+  }
+  function anyUtm(){ return utmFields.some(function(f){ return f.value.trim(); }); }
+  function refresh(){
+    if (!anyUtm()) { preview.hidden = true; return; }
+    var composed = compose(urlEl.value.trim());
+    if (composed) { preview.hidden = false; preview.textContent = composed; } else { preview.hidden = true; }
+  }
+  utmFields.forEach(function(f){ f.addEventListener('input', refresh); });
+  urlEl.addEventListener('input', refresh);
+  if (form) form.addEventListener('submit', function(){
+    if (anyUtm()) { var composed = compose(urlEl.value.trim()); if (composed) urlEl.value = composed; }
+  });
+})();
+
+/* Targeting rules: friendly rows <-> a JSON textarea (which is the no-JS fallback). */
+(function(){
+  var ta = document.querySelector('.rules-json');
+  var container = document.querySelector('.rules');
+  if (!ta || !container) return;
+  document.body.classList.add('js-on');
+  var seed = [];
+  try { seed = JSON.parse(ta.value || '[]'); if (!Array.isArray(seed)) seed = []; } catch(_) { seed = []; }
+  function sync(){
+    var out = [];
+    container.querySelectorAll('.rule-row').forEach(function(r){
+      var type = r.querySelector('.rule-type').value;
+      var match = r.querySelector('.rule-match').value.trim();
+      var url = r.querySelector('.rule-url').value.trim();
+      if (match || url) out.push({ type: type, match: match, url: url });
+    });
+    ta.value = out.length ? JSON.stringify(out) : '';
+  }
+  function makeRow(rule){
+    rule = rule || { type: 'platform', match: '', url: '' };
+    var row = document.createElement('div'); row.className = 'rule-row';
+    var sel = document.createElement('select'); sel.className = 'rule-type';
+    [['platform','Platform'],['country','Country']].forEach(function(o){
+      var opt = document.createElement('option'); opt.value = o[0]; opt.textContent = o[1];
+      if (o[0] === rule.type) opt.selected = true; sel.appendChild(opt);
+    });
+    var match = document.createElement('input'); match.className = 'rule-match'; match.value = rule.match || '';
+    var url = document.createElement('input'); url.className = 'rule-url'; url.type = 'url'; url.placeholder = 'https://…'; url.value = rule.url || '';
+    var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'rm'; rm.textContent = '×'; rm.title = 'Remove rule';
+    function ph(){ match.placeholder = sel.value === 'country' ? 'US' : 'mobile / ios / android'; }
+    ph();
+    sel.addEventListener('change', function(){ ph(); sync(); });
+    match.addEventListener('input', sync); url.addEventListener('input', sync);
+    rm.addEventListener('click', function(){ row.remove(); sync(); });
+    row.appendChild(sel); row.appendChild(match); row.appendChild(url); row.appendChild(rm);
+    return row;
+  }
+  seed.forEach(function(r){ container.appendChild(makeRow(r)); });
+  var add = document.querySelector('.rule-add');
+  if (add) add.addEventListener('click', function(){ container.appendChild(makeRow()); sync(); });
+})();
 `

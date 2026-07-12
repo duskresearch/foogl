@@ -25,6 +25,18 @@ export function parseClick(req: Request): ClickInfo {
   }
 }
 
+// The lowercased traits targeting rules match against. Same source data as
+// parseClick, but shaped for comparison and without the analytics-only fields.
+export function clientTraits(req: Request): { country: string; device: string; os: string } {
+  const ua = req.headers.get('user-agent') || ''
+  const cf = (req as unknown as { cf?: Record<string, string> }).cf || {}
+  return {
+    country: (cf.country ?? '').toLowerCase(),
+    device: deviceOf(ua).toLowerCase(), // mobile / tablet / desktop
+    os: osOf(ua).toLowerCase(), // windows / ios / macos / android / linux / other
+  }
+}
+
 function deviceOf(ua: string): string {
   if (/\b(iPad|Tablet)\b/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua))) return 'tablet'
   if (/Mobi|Android|iPhone|iPod/i.test(ua)) return 'mobile'

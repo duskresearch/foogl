@@ -14,6 +14,11 @@ type StatsData = {
   error?: string
 }
 
+const STATS_ERRORS: Record<string, string> = {
+  badurl: 'That doesn’t look like a valid http(s) link.',
+  badrules: 'A targeting rule is incomplete — each needs a match value and a valid http(s) URL.',
+}
+
 export function statsPage(d: StatsData): string {
   const { link, origin } = d
   const shortUrl = `${origin}/${link.slug}`
@@ -31,9 +36,10 @@ export function statsPage(d: StatsData): string {
     <p class="detail-sub">
       <a href="${escapeAttr(link.url)}" target="_blank" rel="noopener">${escapeHtml(prettyUrl(link.url))} ↗</a>
       <span>·</span><span>created ${escapeHtml(created)}</span>
+      <span>·</span><a href="/${escapeAttr(link.slug)}/clicks.csv">Export clicks ↓</a>
     </p>
 
-    ${d.error ? `<div class="banner">That doesn’t look like a valid http(s) link.</div>` : ''}
+    ${d.error ? `<div class="banner">${STATS_ERRORS[d.error] ?? 'Something went wrong.'}</div>` : ''}
 
     <div class="stats-grid">
       <div class="stat-card"><div class="n">${link.clicks.toLocaleString('en-US')}</div><div class="l">Total clicks</div></div>
@@ -61,6 +67,25 @@ export function statsPage(d: StatsData): string {
         <input name="og_description" type="text" value="${escapeAttr(link.og_description ?? '')}" placeholder="optional" />
         <label>Social preview image URL</label>
         <input name="og_image" type="url" value="${escapeAttr(link.og_image ?? '')}" placeholder="optional" />
+        <label>Expires on <span class="opt-inline">— leave blank for never</span></label>
+        <input name="expires_at" type="date" value="${escapeAttr(link.expires_at ?? '')}" />
+        <label class="check" style="margin-top:4px">
+          <input type="checkbox" name="passthrough" value="1" ${link.passthrough ? 'checked' : ''} />
+          <span><b>Forward query parameters</b> to the destination.</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" name="permanent" value="1" ${link.permanent ? 'checked' : ''} />
+          <span><b>Permanent redirect (301)</b> instead of temporary (302).</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" name="hide_referrer" value="1" ${link.hide_referrer ? 'checked' : ''} />
+          <span><b>Hide referrer</b> — redirect through a no-referrer interstitial.</span>
+        </label>
+        <label style="margin-top:4px">Targeting rules <span class="opt-inline">— first match wins; everyone else gets the destination above</span></label>
+        <p class="rules-hint">Send different visitors elsewhere. <b>Platform</b> = mobile, desktop, tablet, ios or android. <b>Country</b> = a 2-letter code like <code>US</code>.</p>
+        <div class="rules"></div>
+        <button type="button" class="rule-add">+ Add rule</button>
+        <textarea name="rules" class="rules-json" spellcheck="false" placeholder='[{"type":"platform","match":"ios","url":"https://apps.apple.com/…"}]'>${escapeHtml(link.rules ?? '')}</textarea>
         <div class="row-2">
           <button class="save" type="submit">Save changes</button>
         </div>

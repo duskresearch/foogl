@@ -18,7 +18,10 @@
     }
   ]
 
-  // Custom domain (for later): once live on *.workers.dev, point your own
-  // domain at this Worker by adding a route here, e.g.
-  // "routes": [{ "pattern": "go.yourproduct.com", "custom_domain": true }]
+  // Custom domains (for later): once live on *.workers.dev, point your own
+  // domain at this Worker by adding it in the Cloudflare dashboard, or add a
+  // route here — e.g. "routes": [{ "pattern": "go.yourproduct.com", "custom_domain": true }].
+  // NOTE: if you add a "routes" array, it becomes the authoritative list — you
+  // must include EVERY custom domain the Worker serves, or the omitted ones get
+  // unbound on deploy.
 }

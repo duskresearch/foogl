@@ -1,3 +1,19 @@
 # Copy this to `.dev.vars` for local development.
 # The one-click deploy reads the KEYS here to know which secrets to ask you for.
 SITE_PASSWORD=
+
+# Optional. Where the bare domain and unknown slugs redirect (your main site).
+# Set it in Worker Settings -> Variables, or here for local dev. Leave unset to
+# show the sign-in page at the root and a 404 for unknown slugs.
+# ROOT_URL=https://yourbrand.com
+
+# Optional. Enables the HTTP API. Send it as `Authorization: Bearer <token>`.
+# Generate a long random value (e.g. `openssl rand -hex 24`). Leave unset to
+# keep the API turned off.
+# API_TOKEN=
+
+# Optional. The host your short links live on, if it's different from where you
+# open the dashboard (e.g. you manage on my-worker.workers.dev but share links
+# on go.yourbrand.com). Cosmetic: it sets what the dashboard shows and the QR
+# encodes. Your links already resolve on every host bound to the Worker.
+# LINK_HOST=go.yourbrand.com
