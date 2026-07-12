@@ -73,7 +73,7 @@ const ERRORS: Record<string, string> = {
   badexp: 'The expiry date isn’t valid.',
 }
 
-export function dashboardPage(links: LinkRow[], origin: string, error?: string): string {
+export function dashboardPage(links: LinkRow[], origin: string, error?: string, defaultPermanent = false): string {
   const shortHost = origin.replace(/^https?:\/\//, '')
   const totalClicks = links.reduce((s, l) => s + l.clicks, 0)
 
@@ -82,7 +82,10 @@ export function dashboardPage(links: LinkRow[], origin: string, error?: string):
     <header class="head">
       <div class="topbar">
         <div class="brand"><span class="dot"></span><h1 class="wm">foogl</h1></div>
-        <form method="post" action="/logout"><button class="ghost">Log out</button></form>
+        <div class="actions">
+          <a class="ghost" href="/settings">Settings</a>
+          <form method="post" action="/logout"><button class="ghost">Log out</button></form>
+        </div>
       </div>
       <p class="sub">Short, sharp links on your own domain.</p>
     </header>
@@ -111,15 +114,15 @@ export function dashboardPage(links: LinkRow[], origin: string, error?: string):
         <summary>Link options <span class="opt">optional</span></summary>
         <div class="more-body">
           <label class="field">
-            <span class="flabel">Expires on <span class="opt-inline">— stops working after this day</span></span>
+            <span class="flabel">Expires on <span class="opt-inline">(stops working after this day)</span></span>
             <input name="expires_at" type="date" autocomplete="off" />
           </label>
           <label class="check">
             <input type="checkbox" name="passthrough" value="1" />
-            <span><b>Forward query parameters.</b> Anything after <code>?</code> on the short link is added to the destination — handy for <code>utm_*</code> tags.</span>
+            <span><b>Forward query parameters.</b> Anything after <code>?</code> on the short link is added to the destination. Handy for <code>utm_*</code> tags.</span>
           </label>
           <label class="check">
-            <input type="checkbox" name="permanent" value="1" />
+            <input type="checkbox" name="permanent" value="1" ${defaultPermanent ? 'checked' : ''} />
             <span><b>Permanent redirect (301).</b> Faster, but browsers cache it hard. Use only when the destination will never change.</span>
           </label>
           <label class="check">
@@ -244,6 +247,8 @@ a { color: inherit; }
 .wrap { max-width: 680px; margin: 0 auto; padding: 64px 24px 120px; }
 .head { margin-bottom: 28px; }
 .topbar { display: flex; align-items: center; justify-content: space-between; }
+.actions { display: flex; align-items: center; gap: 8px; }
+.actions .ghost { text-decoration: none; display: inline-flex; align-items: center; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand.center { justify-content: center; }
 .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
@@ -263,6 +268,7 @@ h1.wm { font-family: var(--mono); font-weight: 400; font-size: 18px; letter-spac
   color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
   padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 20px;
 }
+.banner.ok { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
 
 /* create form */
 .create {
@@ -318,6 +324,12 @@ input::placeholder { color: var(--muted); }
 .check input[type=checkbox] { margin: 2px 0 0; accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; }
 .check b { color: var(--ink); font-weight: 600; }
 .check code { font-family: var(--mono); font-size: .92em; background: var(--sunken); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+.radio { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; color: var(--secondary); line-height: 1.5; cursor: pointer; }
+.radio input[type=radio] { margin: 2px 0 0; accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; }
+.radio b { color: var(--ink); font-weight: 600; }
+.token-row { display: flex; gap: 8px; align-items: center; }
+.token-field { flex: 1; min-width: 0; font-family: var(--mono); font-size: 12px; letter-spacing: .01em; }
+.edit .hint code, .hint code { font-family: var(--mono); font-size: .9em; background: var(--sunken); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--ink); }
 .utm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .utm-grid .utm-f:nth-child(3) { grid-column: 1 / -1; }
 .utm-preview { margin: 10px 0 0; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; color: var(--secondary); word-break: break-all; background: var(--sunken); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
@@ -437,8 +449,8 @@ input::placeholder { color: var(--muted); }
 .qr-card .dl { display: inline-block; margin-top: 10px; font-size: 13px; color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--line); }
 .qr-card .dl:hover { color: var(--accent); border-color: var(--accent); }
 .danger { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
-.danger .del { border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line)); background: transparent; color: var(--danger); font-size: 13px; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
-.danger .del:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.del { border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line)); background: transparent; color: var(--danger); font-size: 13px; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+.del:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
 .two-col { display: grid; grid-template-columns: 1fr 220px; gap: 12px; align-items: start; }
 @media (max-width: 560px) {
   .stats-grid { grid-template-columns: 1fr 1fr; }
@@ -471,6 +483,14 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'c' && tag !== 'input' && tag !== 'textarea' && !e.metaKey && !e.ctrlKey) {
     const el = document.querySelector('.create .url'); if (el) { e.preventDefault(); el.focus(); }
   }
+});
+/* Settings: reveal/hide the API token */
+document.addEventListener('click', (e) => {
+  const r = e.target.closest('.reveal'); if (!r) return;
+  const f = r.parentElement.querySelector('.token-field'); if (!f) return;
+  const show = f.type === 'password';
+  f.type = show ? 'text' : 'password';
+  r.textContent = show ? 'Hide' : 'Reveal';
 });
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));

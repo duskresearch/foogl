@@ -2,7 +2,12 @@ import { Hono } from 'hono'
 import QRCode from 'qrcode-svg'
 import { dashboardPage, loginPage, setupPage } from './views'
 import { statsPage } from './stats'
-import { gate, handleLogin, handleLogout, isAuthed } from './auth'
+import { settingsPage } from './settings-view'
+import { gate, handleLogin, handleLogout, isAuthed, issueSession } from './auth'
+import {
+  getSetting, setSetting, effectiveRootUrl, effectiveApiToken, defaultPermanent,
+  hasPassword, verifyLogin, setPassword, generateToken,
+} from './settings'
 import { parseClick, isCrawler, clientTraits } from './ua'
 import { parseRules, resolveTarget } from './targeting'
 import { ogPage, hasOg } from './og'
@@ -14,7 +19,9 @@ import { MANIFEST, SW_JS, FAVICON_SVG as APP_FAVICON, ICON_192_B64, ICON_512_B64
 // SITE_PASSWORD is the dashboard password (a secret).
 export type Env = {
   DB: D1Database
-  SITE_PASSWORD: string
+  // The first-run dashboard password. Once you change the password in-app it's
+  // stored (hashed) in D1 and this becomes the fallback.
+  SITE_PASSWORD?: string
   // Optional: where the bare domain (and unknown slugs) redirect. Set it to
   // your main site so people who hit the naked short domain land somewhere real.
   ROOT_URL?: string
@@ -45,7 +52,7 @@ export type LinkRow = {
 const app = new Hono<{ Bindings: Env }>()
 
 // Slugs that would collide with our own routes.
-const RESERVED = new Set(['api', 'login', 'logout'])
+const RESERVED = new Set(['api', 'login', 'logout', 'settings'])
 
 // ───────────────────────────────────────────────────────────
 // HOST ROUTING — one Worker, three roles decided by the host:
@@ -96,14 +103,15 @@ app.use('*', async (c, next) => {
   if (m && !RESERVED.has(m[1].toLowerCase())) return next() // /slug → redirect route
   // Root and everything else (incl. would-be dashboard paths) → the operator's
   // main site if set, else a plain 404. No dashboard on a bare short domain.
-  return c.env.ROOT_URL ? c.redirect(c.env.ROOT_URL, 302) : c.notFound()
+  const root = await effectiveRootUrl(c.env)
+  return root ? c.redirect(root, 302) : c.notFound()
 })
 
 // ───────────────────────────────────────────────────────────
 // AUTH (public: login page + form; logout)
 // ───────────────────────────────────────────────────────────
-app.get('/login', (c) =>
-  c.html(c.env.SITE_PASSWORD ? loginPage(c.req.query('error')) : setupPage()),
+app.get('/login', async (c) =>
+  c.html((await hasPassword(c.env)) ? loginPage(c.req.query('error')) : setupPage()),
 )
 app.post('/login', handleLogin)
 app.post('/logout', handleLogout)
@@ -120,7 +128,7 @@ app.get('/', async (c) => {
     'SELECT * FROM links ORDER BY created_at DESC',
   ).all<LinkRow>()
   const origin = linkBase(c.env, c.req.url)
-  return c.html(dashboardPage(results ?? [], origin, c.req.query('error')))
+  return c.html(dashboardPage(results ?? [], origin, c.req.query('error'), await defaultPermanent(c.env)))
 })
 
 // ───────────────────────────────────────────────────────────
@@ -172,6 +180,57 @@ app.post('/api/links/:slug/delete', gate, async (c) => {
     c.env.DB.prepare('DELETE FROM clicks WHERE slug = ?').bind(slug),
   ])
   return c.redirect('/')
+})
+
+// ───────────────────────────────────────────────────────────
+// SETTINGS (gated) — in-app config, backed by the D1 settings table. A stored
+// value overrides the matching env var, so nothing breaks for env-var setups.
+// ───────────────────────────────────────────────────────────
+app.get('/settings', gate, async (c) => {
+  const d1Token = await getSetting(c.env, 'api_token')
+  return c.html(
+    settingsPage({
+      rootUrl: (await getSetting(c.env, 'root_url')) ?? c.env.ROOT_URL ?? '',
+      apiToken: d1Token ?? c.env.API_TOKEN ?? null,
+      apiFromEnv: !d1Token && !!c.env.API_TOKEN,
+      defaultPermanent: await defaultPermanent(c.env),
+      passwordInApp: (await getSetting(c.env, 'password_hash')) != null,
+      notice: c.req.query('saved'),
+      error: c.req.query('error'),
+    }),
+  )
+})
+
+app.post('/api/settings', gate, async (c) => {
+  const form = await c.req.parseBody()
+  const root = str(form.root_url)
+  if (root && !isValidUrl(root)) return c.redirect('/settings?error=badurl')
+  await setSetting(c.env, 'root_url', root)
+  await setSetting(c.env, 'default_permanent', form.default_permanent === '1' ? '1' : null)
+  return c.redirect('/settings?saved=general')
+})
+
+app.post('/api/settings/token', gate, async (c) => {
+  const form = await c.req.parseBody()
+  if (form.action === 'revoke') {
+    await setSetting(c.env, 'api_token', null)
+    return c.redirect('/settings?saved=token_off')
+  }
+  await setSetting(c.env, 'api_token', generateToken())
+  return c.redirect('/settings?saved=token_new')
+})
+
+app.post('/api/settings/password', gate, async (c) => {
+  const form = await c.req.parseBody()
+  const current = String(form.current ?? '')
+  const pw = String(form.new ?? '')
+  const confirm = String(form.confirm ?? '')
+  if (!(await verifyLogin(c.env, current))) return c.redirect('/settings?error=pw_wrong')
+  if (pw !== confirm) return c.redirect('/settings?error=pw_mismatch')
+  if (pw.length < 8) return c.redirect('/settings?error=pw_short')
+  await setPassword(c.env, pw)
+  await issueSession(c) // re-sign the cookie with the new secret so we stay logged in
+  return c.redirect('/settings?saved=password')
 })
 
 // ───────────────────────────────────────────────────────────
@@ -314,8 +373,8 @@ app.get('/icon-180.png', () => pngResponse(ICON_180_B64))
 // ───────────────────────────────────────────────────────────
 const api = new Hono<{ Bindings: Env }>()
 api.use('*', async (c, next) => {
-  const token = c.env.API_TOKEN
-  if (!token) return c.json({ error: 'api_disabled', detail: 'Set the API_TOKEN variable to enable the HTTP API.' }, 503)
+  const token = await effectiveApiToken(c.env)
+  if (!token) return c.json({ error: 'api_disabled', detail: 'Enable the HTTP API from the dashboard Settings, or set the API_TOKEN variable.' }, 503)
   const hdr = c.req.header('authorization') || ''
   const got = hdr.startsWith('Bearer ') ? hdr.slice(7).trim() : ''
   if (got !== token) return c.json({ error: 'unauthorized' }, 401)
@@ -341,7 +400,7 @@ api.post('/links', async (c) => {
     og_image: str(body.og_image),
     expires_at: str(body.expires_at),
     passthrough: !!body.passthrough,
-    permanent: !!body.permanent,
+    permanent: 'permanent' in body ? !!body.permanent : undefined,
     hide_referrer: !!body.hide_referrer,
     rules: body.rules,
   })
@@ -374,8 +433,11 @@ app.route('/api/v1', api)
 app.get('/:slug', async (c) => {
   const slug = c.req.param('slug')
   const link = await c.env.DB.prepare('SELECT * FROM links WHERE slug = ?').bind(slug).first<LinkRow>()
-  // Unknown or expired slug: fall back to your site if ROOT_URL is set, else a plain 404.
-  if (!link || isExpired(link)) return c.env.ROOT_URL ? c.redirect(c.env.ROOT_URL, 302) : c.notFound()
+  // Unknown or expired slug: fall back to your main site if set, else a plain 404.
+  if (!link || isExpired(link)) {
+    const root = await effectiveRootUrl(c.env)
+    return root ? c.redirect(root, 302) : c.notFound()
+  }
 
   const req = c.req.raw
   const dest = destOf(link, req) // forwards ?query to the target when passthrough is on
@@ -443,11 +505,13 @@ async function createLink(
   const parsed = parseRules(input.rules)
   if (!parsed.ok) return { ok: false, error: parsed.error }
   const rules = parsed.rules.length ? JSON.stringify(parsed.rules) : null
+  // When the caller doesn't specify, fall back to the operator's default.
+  const permanent = input.permanent === undefined ? await defaultPermanent(env) : input.permanent
   try {
     await env.DB.prepare(
       'INSERT INTO links (slug, url, og_title, og_description, og_image, expires_at, passthrough, permanent, hide_referrer, rules) VALUES (?,?,?,?,?,?,?,?,?,?)',
     )
-      .bind(slug, url, input.og_title ?? null, input.og_description ?? null, input.og_image ?? null, exp, input.passthrough ? 1 : 0, input.permanent ? 1 : 0, input.hide_referrer ? 1 : 0, rules)
+      .bind(slug, url, input.og_title ?? null, input.og_description ?? null, input.og_image ?? null, exp, input.passthrough ? 1 : 0, permanent ? 1 : 0, input.hide_referrer ? 1 : 0, rules)
       .run()
   } catch {
     return { ok: false, error: 'taken' }

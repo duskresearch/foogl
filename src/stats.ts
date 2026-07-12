@@ -16,7 +16,7 @@ type StatsData = {
 
 const STATS_ERRORS: Record<string, string> = {
   badurl: 'That doesn’t look like a valid http(s) link.',
-  badrules: 'A targeting rule is incomplete — each needs a match value and a valid http(s) URL.',
+  badrules: 'A targeting rule is incomplete. Each needs a match value and a valid http(s) URL.',
 }
 
 export function statsPage(d: StatsData): string {
@@ -67,7 +67,7 @@ export function statsPage(d: StatsData): string {
         <input name="og_description" type="text" value="${escapeAttr(link.og_description ?? '')}" placeholder="optional" />
         <label>Social preview image URL</label>
         <input name="og_image" type="url" value="${escapeAttr(link.og_image ?? '')}" placeholder="optional" />
-        <label>Expires on <span class="opt-inline">— leave blank for never</span></label>
+        <label>Expires on <span class="opt-inline">(leave blank for never)</span></label>
         <input name="expires_at" type="date" value="${escapeAttr(link.expires_at ?? '')}" />
         <label class="check" style="margin-top:4px">
           <input type="checkbox" name="passthrough" value="1" ${link.passthrough ? 'checked' : ''} />
@@ -79,9 +79,9 @@ export function statsPage(d: StatsData): string {
         </label>
         <label class="check">
           <input type="checkbox" name="hide_referrer" value="1" ${link.hide_referrer ? 'checked' : ''} />
-          <span><b>Hide referrer</b> — redirect through a no-referrer interstitial.</span>
+          <span><b>Hide referrer.</b> Redirect through a no-referrer interstitial.</span>
         </label>
-        <label style="margin-top:4px">Targeting rules <span class="opt-inline">— first match wins; everyone else gets the destination above</span></label>
+        <label style="margin-top:4px">Targeting rules <span class="opt-inline">(first match wins; everyone else gets the destination above)</span></label>
         <p class="rules-hint">Send different visitors elsewhere. <b>Platform</b> = mobile, desktop, tablet, ios or android. <b>Country</b> = a 2-letter code like <code>US</code>.</p>
         <div class="rules"></div>
         <button type="button" class="rule-add">+ Add rule</button>
