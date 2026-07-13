@@ -21,7 +21,7 @@
   "cloudflare": {
     "bindings": {
       "SITE_PASSWORD": {
-        "description": "The password for your dashboard. Pick a strong one (12+ characters) — this is the only thing standing between the public and your link manager."
+        "description": "The password for your dashboard. Pick a strong one (12+ characters). It is the only thing standing between the public and your link manager."
       }
     }
   }

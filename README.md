@@ -2,7 +2,7 @@
 
 **A tiny, self-hosted link shortener you deploy to Cloudflare in one click.**
 
-Short links on your own domain, a clean dashboard you'd actually enjoy using, and simple analytics — with no server to run, no Docker, and no database to provision. It lives entirely on Cloudflare's free tier.
+Short links on your own domain, a clean dashboard you'd actually enjoy using, and simple analytics, with no server to run, no Docker, and no database to provision. It lives entirely on Cloudflare's free tier.
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/ekpani/foogl)
 
@@ -10,56 +10,63 @@ Short links on your own domain, a clean dashboard you'd actually enjoy using, an
 
 ## What you get
 
-- **Create short links** — auto-generated or your own custom slug
+- **Create short links.** Auto-generated or your own custom slug
 - **Fast redirects** at Cloudflare's edge, counted without slowing anyone down
-- **Simple analytics** per link — clicks over time, plus top countries, referrers, devices and browsers. Geolocation is free from Cloudflare's edge (no MaxMind, no API token)
-- **Link expiry** — set a date and the link stops working after it (falling back to your `ROOT_URL` or a 404)
-- **Targeting** — send different visitors to different URLs with per-link rules: by **platform** (iOS → App Store, Android → Play, desktop → your site) or by **country** (US → us-site). First match wins; everyone else gets the default. Geo is free from Cloudflare's edge
-- **Query passthrough** — optionally forward `?utm_source=…` and friends from the short link straight onto the destination
-- **UTM builder** — compose `utm_*` tags onto a destination with a live preview as you type
-- **301 or 302** per link — permanent (cached hard by browsers) or temporary, your call
-- **Referrer hiding** — optionally send visitors through a `no-referrer` hop so the destination can't see where they came from
+- **Simple analytics** per link: clicks over time, plus top countries, referrers, devices and browsers. Geolocation is free from Cloudflare's edge (no MaxMind, no API token)
+- **Link expiry.** Set a date and the link stops working after it (falling back to your `ROOT_URL` or a 404)
+- **Targeting.** Send different visitors to different URLs with per-link rules: by **platform** (iOS → App Store, Android → Play, desktop → your site) or by **country** (US → us-site). First match wins; everyone else gets the default. Geo is free from Cloudflare's edge
+- **Query passthrough.** Optionally forward `?utm_source=…` and friends from the short link straight onto the destination
+- **UTM builder.** Compose `utm_*` tags onto a destination with a live preview as you type
+- **301 or 302** per link: permanent (cached hard by browsers) or temporary, your call
+- **Referrer hiding.** Optionally send visitors through a `no-referrer` hop so the destination can't see where they came from
 - **QR code** for every link, ready to download
-- **Social previews** — set a title, description and image so shared links look right on Twitter, Slack, Discord, etc.
-- **CSV export** — download all your links, or one link's full clickstream, any time. Your data, no lock-in
-- **HTTP API** — create, list and delete links from a script or another app (opt-in with a token). See [below](#http-api)
-- **Installable** — the dashboard is a PWA, so you can add it to your phone's home screen and it works like an app
+- **Social previews.** Set a title, description and image so shared links look right on Twitter, Slack, Discord, etc.
+- **CSV export.** Download all your links, or one link's full clickstream, any time. Your data, no lock-in
+- **HTTP API.** Create, list and delete links from a script or another app (opt-in with a token). See [below](#http-api)
+- **Installable.** The dashboard is a PWA, so you can add it to your phone's home screen and it works like an app
 - **One password** protects your dashboard. No accounts, no user table
-- **Your domain** — point `go.yourbrand.com` at it and you're done
-- **Bring nothing** — Cloudflare Workers + D1 (SQLite), no build step, no Redis, no Postgres
+- **Your domain.** Point `go.yourbrand.com` at it and you're done
+- **Bring nothing.** Cloudflare Workers + D1 (SQLite), no build step, no Redis, no Postgres
 
 It deliberately does *less* than the big shorteners. No teams, no affiliate programs, no A/B tests. Just the short-link loop, done well.
 
-## Deploy it
+## Deploy it (one click)
 
-1. Click **Deploy to Cloudflare** above.
-2. Authorize your Cloudflare account. It forks this repo, creates your database, and deploys, all automatically.
-3. When prompted, set a **`SITE_PASSWORD`**. It is the only thing between the public and your dashboard, so make it a good one. (Skip it and foogl will show you how to set it on first open.)
+Clicking **Deploy to Cloudflare** hands the whole setup to Cloudflare. Here is exactly what happens, and the little you do.
 
-### After it deploys, here is how you use it
+1. **Sign in to Cloudflare.** The button takes you there. A free account is all you need.
+2. **Let it connect to your GitHub.** Cloudflare copies foogl into a brand-new repository on *your* GitHub account. That copy is yours to keep and redeploy. Authorize it when asked.
+3. **Set your dashboard password.** On the single setup page there is a field for **`SITE_PASSWORD`**. This is the only thing guarding your dashboard, so make it a strong one. (The Worker name and database name are pre-filled. The defaults are fine.)
+4. **Click deploy and wait a minute or two.** Cloudflare now does the rest for you: it creates your database, builds the tables (runs the migrations), and publishes the Worker. You never touch a command line.
+5. **Open your dashboard.** When it finishes, Cloudflare shows your new Worker with an address like `https://foogl-abc123.your-name.workers.dev`. Click **Visit** (or find it later under *Workers &amp; Pages → your worker → Visit*). That page is your dashboard.
+6. **Sign in and make your first link.** Enter the password from step 3, paste a long URL, and hit **Shorten**. It is live instantly at `your-worker.workers.dev/your-slug`.
 
-4. Cloudflare shows your new Worker. Open its **`*.workers.dev`** URL — the *Visit* link, or find it under *Workers &amp; Pages → foogl → Visit*.
-5. **Sign in** with the `SITE_PASSWORD` you set. That page is your dashboard.
-6. **Make your first link:** paste a long URL, optionally type a custom slug, and hit **Shorten**. It is live instantly at `your-worker.workers.dev/your-slug`.
-7. **Put it on your own domain** (recommended): in the Worker, open *Settings → Domains &amp; Routes* and add a short domain you own, like `go.yourbrand.com`. From then on your short links live there — `go.yourbrand.com/your-slug`.
+That is the whole thing. No servers, no database to run, nothing to keep patched.
 
-That is it. No servers to patch, nothing to keep running.
+> **Landed on a "finish setting up" screen, or never got asked for a password?** You skipped step 3. The screen tells you how: open your Worker, go to *Settings → Variables and Secrets*, add a **Secret** named `SITE_PASSWORD`, click **Deploy**, then reload and sign in.
 
-### Where the dashboard lives
+## Put it on your own domain
 
-foogl decides what to serve by hostname, so your short domain stays clean:
+Your links work on the `workers.dev` address right away, but you will want them on your own short domain. foogl decides what to serve by hostname, which keeps your short domain clean:
 
-- **`go.yourbrand.com`** (your short domain) → only resolves links. The root sends people to your `ROOT_URL`; `…/slug` redirects. The dashboard is **never** exposed here.
-- **`app.go.yourbrand.com`** → the **dashboard** (sign in, manage links). Add it as a second custom domain and it just works — the dashboard automatically shows your links on the short domain.
-- **`your-worker.workers.dev`** → also the dashboard, so you can manage links before you set up any custom domains.
+| Address | What it serves |
+| --- | --- |
+| `go.yourbrand.com` *(your short domain)* | Links only. `…/slug` redirects; the bare domain sends people to your main site. The dashboard is never exposed here. |
+| `app.go.yourbrand.com` | Your **dashboard** (sign in, manage links). |
+| `your-worker.workers.dev` | Also the dashboard, so you can work before any custom domains exist. |
 
-So: add your short domain for the links, and `app.<that-domain>` when you want a tidy dashboard URL. Until then, the `workers.dev` URL is your dashboard.
+To set this up: open your Worker, go to *Settings → Domains &amp; Routes*, and **Add** two custom domains: your short domain (e.g. `go.yourbrand.com`) and `app.` plus that domain (e.g. `app.go.yourbrand.com`). Cloudflare provisions the DNS and SSL for you. The dashboard on the `app.` host automatically shows and copies your links on the short domain, so there is nothing else to wire up.
 
-**Optional:** set a `ROOT_URL` variable (Worker → *Settings → Variables*) to your main site. Then your short domain's root, and any mistyped link, sends people there instead of a 404.
+## Set the rest from the dashboard
 
-**Optional:** set a `LINK_HOST` variable if your dashboard host and link host don't follow the `app.` convention — it forces what the dashboard shows and the QR encodes.
+Signed in, the **Settings** link (top-right) runs everything else, no Cloudflare trip needed:
 
-**Optional:** set a `LINK_HOST` variable (e.g. `go.yourbrand.com`) if you open the dashboard on one host but want to share links on another. It only changes what the dashboard shows and what the QR encodes — your links already resolve on every domain bound to the Worker.
+- **Main site** the bare domain and any mistyped link redirect to.
+- **Default 301 or 302** for new links.
+- **HTTP API** on or off, with a token you generate here. See [below](#http-api).
+- **Password** change it whenever you like.
+
+*(Prefer environment variables? `ROOT_URL`, `API_TOKEN` and `LINK_HOST` still work as fallbacks, set under the Worker's *Settings → Variables*. A value saved in the dashboard wins over the variable.)*
 
 ## Run it locally
 
@@ -113,12 +120,12 @@ curl -X POST https://your-worker.workers.dev/api/v1/links \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://example.com/a-very-long-link",
-    "slug": "launch",           // optional — omit for a random one
-    "expires_at": "2030-12-31",  // optional — YYYY-MM-DD
-    "passthrough": true,         // optional — forward ?query to the destination
-    "permanent": false,          // optional — true = 301, false (default) = 302
-    "hide_referrer": false,      // optional — hop through a no-referrer page
-    "rules": [                   // optional — targeting; first match wins
+    "slug": "launch",           // optional, omit for a random one
+    "expires_at": "2030-12-31",  // optional, YYYY-MM-DD
+    "passthrough": true,         // optional, forward ?query to the destination
+    "permanent": false,          // optional, true = 301, false (default) = 302
+    "hide_referrer": false,      // optional, hop through a no-referrer page
+    "rules": [                   // optional, targeting; first match wins
       { "type": "platform", "match": "ios",     "url": "https://apps.apple.com/app/id123" },
       { "type": "platform", "match": "android", "url": "https://play.google.com/store/apps/details?id=x" },
       { "type": "country",  "match": "US",      "url": "https://example.com/us" }
@@ -148,14 +155,14 @@ Errors come back as `{ "error": "..." }` with a matching HTTP status: `401` (bad
 
 ## How it's built
 
-- **[Cloudflare Workers](https://workers.cloudflare.com/)** — the runtime (edge, generous free tier)
-- **[Hono](https://hono.dev/)** — a tiny, fast web framework
-- **[D1](https://developers.cloudflare.com/d1/)** — Cloudflare's built-in SQLite; holds your links and clicks
-- **No build step** — the dashboard is server-rendered HTML with hand-written CSS
+- **[Cloudflare Workers](https://workers.cloudflare.com/)** for the runtime (edge, generous free tier)
+- **[Hono](https://hono.dev/)**, a tiny, fast web framework
+- **[D1](https://developers.cloudflare.com/d1/)**, Cloudflare's built-in SQLite; holds your links and clicks
+- **No build step.** The dashboard is server-rendered HTML with hand-written CSS
 
 ## License
 
-MIT — see [LICENSE](./LICENSE). Do what you like with it.
+MIT. See [LICENSE](./LICENSE) and do what you like with it.
 
 ---
 
