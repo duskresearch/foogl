@@ -57,6 +57,8 @@ Your links work on the `workers.dev` address right away, but you will want them 
 
 To set this up: open your Worker, go to *Settings → Domains &amp; Routes*, and **Add** two custom domains: your short domain (e.g. `go.yourbrand.com`) and `app.` plus that domain (e.g. `app.go.yourbrand.com`). Cloudflare provisions the DNS and SSL for you. The dashboard on the `app.` host automatically shows and copies your links on the short domain, so there is nothing else to wire up.
 
+**Good to know:** the dashboard is served only on an `app.` host, on your `*.workers.dev` URL, or on `localhost`. Keep the `*.workers.dev` URL enabled (it is by default) and it is always a working way in, even before you add custom domains. In the rare case your short domain itself starts with `app.` (e.g. `app.example`), set a `LINK_HOST` variable to that domain so the dashboard shows the right short URLs.
+
 ## Set the rest from the dashboard
 
 Signed in, the **Settings** link (top-right) runs everything else, no Cloudflare trip needed:
@@ -159,6 +161,10 @@ Errors come back as `{ "error": "..." }` with a matching HTTP status: `401` (bad
 - **[Hono](https://hono.dev/)**, a tiny, fast web framework
 - **[D1](https://developers.cloudflare.com/d1/)**, Cloudflare's built-in SQLite; holds your links and clicks
 - **No build step.** The dashboard is server-rendered HTML with hand-written CSS
+
+## Forking foogl?
+
+The repo ships with the marketing landing page for [foo.gl](https://foo.gl), which only ever renders on the `foo.gl` host, so on your own deployment it never shows. If you want it out of your fork entirely, delete `src/landing-assets.ts` and remove the `if (hostname === 'foo.gl')` / `www.foo.gl` branch in the host-routing middleware at the top of `src/index.ts`. The shortener and dashboard are unaffected.
 
 ## License
 

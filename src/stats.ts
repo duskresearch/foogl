@@ -16,6 +16,7 @@ type StatsData = {
 
 const STATS_ERRORS: Record<string, string> = {
   badurl: 'That doesn’t look like a valid http(s) link.',
+  badexp: 'The expiry date isn’t a valid calendar date.',
   badrules: 'A targeting rule is incomplete. Each needs a match value and a valid http(s) URL.',
 }
 

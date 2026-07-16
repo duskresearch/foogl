@@ -1,12 +1,12 @@
 import { Hono } from 'hono'
 import QRCode from 'qrcode-svg'
-import { dashboardPage, loginPage, setupPage } from './views'
+import { dashboardPage, loginPage, setupPage, escapeAttr } from './views'
 import { statsPage } from './stats'
 import { settingsPage } from './settings-view'
 import { gate, handleLogin, handleLogout, isAuthed, issueSession } from './auth'
 import {
   getSetting, setSetting, effectiveRootUrl, effectiveApiToken, defaultPermanent,
-  hasPassword, verifyLogin, setPassword, generateToken,
+  hasPassword, verifyLogin, setPassword, generateToken, timingSafeEqual, loadSettings,
 } from './settings'
 import { parseClick, isCrawler, clientTraits } from './ua'
 import { parseRules, resolveTarget } from './targeting'
@@ -145,6 +145,7 @@ app.post('/api/links', gate, async (c) => {
     expires_at: str(form.expires_at),
     passthrough: !!form.passthrough,
     permanent: !!form.permanent,
+    hide_referrer: !!form.hide_referrer,
   })
   return c.redirect(r.ok ? '/' : '/?error=' + r.error)
 })
@@ -157,7 +158,8 @@ app.post('/api/links/:slug/edit', gate, async (c) => {
   const form = await c.req.parseBody()
   const url = String(form.url ?? '').trim()
   if (!isValidUrl(url)) return c.redirect(`/${slug}/stats?error=badurl`)
-  const exp = form.expires_at ? String(form.expires_at).slice(0, 10) : null
+  const exp = normalizeExpiry(form.expires_at)
+  if (exp === false) return c.redirect(`/${slug}/stats?error=badexp`)
   const parsed = parseRules(str(form.rules))
   if (!parsed.ok) return c.redirect(`/${slug}/stats?error=badrules`)
   const rules = parsed.rules.length ? JSON.stringify(parsed.rules) : null
@@ -187,14 +189,16 @@ app.post('/api/links/:slug/delete', gate, async (c) => {
 // value overrides the matching env var, so nothing breaks for env-var setups.
 // ───────────────────────────────────────────────────────────
 app.get('/settings', gate, async (c) => {
-  const d1Token = await getSetting(c.env, 'api_token')
+  // One query for the whole table instead of a getSetting round trip per field.
+  const s = await loadSettings(c.env)
+  const d1Token = s.get('api_token') ?? null
   return c.html(
     settingsPage({
-      rootUrl: (await getSetting(c.env, 'root_url')) ?? c.env.ROOT_URL ?? '',
+      rootUrl: s.get('root_url') ?? c.env.ROOT_URL ?? '',
       apiToken: d1Token ?? c.env.API_TOKEN ?? null,
       apiFromEnv: !d1Token && !!c.env.API_TOKEN,
-      defaultPermanent: await defaultPermanent(c.env),
-      passwordInApp: (await getSetting(c.env, 'password_hash')) != null,
+      defaultPermanent: s.get('default_permanent') === '1',
+      passwordInApp: s.get('password_hash') != null,
       notice: c.req.query('saved'),
       error: c.req.query('error'),
     }),
@@ -373,11 +377,14 @@ app.get('/icon-180.png', () => pngResponse(ICON_180_B64))
 // ───────────────────────────────────────────────────────────
 const api = new Hono<{ Bindings: Env }>()
 api.use('*', async (c, next) => {
+  // One D1 read per API request: the D1-overrides-env contract means we must check the
+  // settings table to know whether an in-app token supersedes the env one. It's a single
+  // read, on par with the link lookup each handler does next.
   const token = await effectiveApiToken(c.env)
   if (!token) return c.json({ error: 'api_disabled', detail: 'Enable the HTTP API from the dashboard Settings, or set the API_TOKEN variable.' }, 503)
   const hdr = c.req.header('authorization') || ''
   const got = hdr.startsWith('Bearer ') ? hdr.slice(7).trim() : ''
-  if (got !== token) return c.json({ error: 'unauthorized' }, 401)
+  if (!timingSafeEqual(got, token)) return c.json({ error: 'unauthorized' }, 401)
   await next()
 })
 api.get('/links', async (c) => {
@@ -406,7 +413,10 @@ api.post('/links', async (c) => {
   })
   if (!r.ok) return c.json({ error: r.error }, 400)
   const link = await c.env.DB.prepare('SELECT * FROM links WHERE slug = ?').bind(r.slug).first<LinkRow>()
-  return c.json(publicLink(link!, linkBase(c.env, c.req.url)), 201)
+  // The row was just inserted; if a concurrent delete removed it before this read,
+  // still return a clean 201 for the slug we created rather than dereferencing null.
+  if (!link) return c.json({ slug: r.slug }, 201)
+  return c.json(publicLink(link, linkBase(c.env, c.req.url)), 201)
 })
 api.get('/links/:slug', async (c) => {
   const link = await c.env.DB.prepare('SELECT * FROM links WHERE slug = ?').bind(c.req.param('slug')).first<LinkRow>()
@@ -435,17 +445,25 @@ app.get('/:slug', async (c) => {
   const link = await c.env.DB.prepare('SELECT * FROM links WHERE slug = ?').bind(slug).first<LinkRow>()
   // Unknown or expired slug: fall back to your main site if set, else a plain 404.
   if (!link || isExpired(link)) {
+    // On the marketing host an unknown slug is a plain 404, never a ROOT_URL bounce,
+    // so a typo'd foo.gl link never redirects off the branded domain.
+    const host = (c.req.header('host') || '').toLowerCase().split(':')[0]
+    if (host === 'foo.gl' || host === 'www.foo.gl') return c.notFound()
     const root = await effectiveRootUrl(c.env)
     return root ? c.redirect(root, 302) : c.notFound()
   }
 
   const req = c.req.raw
   const dest = destOf(link, req) // forwards ?query to the target when passthrough is on
-  const code = link.permanent ? 301 : 302
+  // 301 is only safe when the destination is invariant. Targeting rules and query
+  // passthrough resolve per-visitor, and a cached 301 would pin one visitor's result
+  // for everyone, so fall back to 302 whenever either is in play.
+  const code = link.permanent && !link.rules && !link.passthrough ? 301 : 302
 
   if (isCrawler(req)) {
-    // Social/link-preview bot: show the branded card if we have one, else just redirect.
-    return hasOg(link) ? c.html(ogPage(link)) : c.redirect(dest, code)
+    // Social/link-preview bot: show the branded card if we have one, else redirect to
+    // the canonical URL (not the per-visitor targeted variant chosen from the bot's UA).
+    return hasOg(link) ? c.html(ogPage(link)) : c.redirect(link.url, 302)
   }
 
   const info = parseClick(req)
@@ -476,6 +494,20 @@ function str(v: unknown): string | null {
   return s || null
 }
 
+// Normalize an expiry input to a real "YYYY-MM-DD" date. Empty → null (no expiry);
+// a malformed or impossible date (e.g. 2026-13-45) → false so callers can reject it.
+// Guards against a bad value silently making isExpired() compute NaN (never expires).
+function normalizeExpiry(raw: unknown): string | null | false {
+  const s = String(raw ?? '').trim().slice(0, 10)
+  if (!s) return null
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
+  if (!m) return false
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3])
+  const dt = new Date(Date.UTC(y, mo - 1, d))
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return false
+  return s
+}
+
 type CreateInput = {
   url: string
   slug?: string
@@ -500,8 +532,8 @@ async function createLink(
   if (!slug) slug = randomSlug()
   if (!/^[a-zA-Z0-9_-]+$/.test(slug)) return { ok: false, error: 'badslug' }
   if (RESERVED.has(slug.toLowerCase())) return { ok: false, error: 'reserved' }
-  const exp = input.expires_at ? String(input.expires_at).slice(0, 10) : null
-  if (exp && !/^\d{4}-\d{2}-\d{2}$/.test(exp)) return { ok: false, error: 'badexp' }
+  const exp = normalizeExpiry(input.expires_at)
+  if (exp === false) return { ok: false, error: 'badexp' }
   const parsed = parseRules(input.rules)
   if (!parsed.ok) return { ok: false, error: parsed.error }
   const rules = parsed.rules.length ? JSON.stringify(parsed.rules) : null
@@ -544,7 +576,10 @@ function pngResponse(b64: string): Response {
 
 // Tiny interstitial that drops the referrer, then bounces to the destination.
 function referrerHidePage(dest: string): string {
-  const attr = dest.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+  const attr = escapeAttr(dest) // safe in the double-quoted meta/href attribute contexts
+  // In the inline <script>, JSON.stringify escapes quotes but NOT "</script>", so a
+  // destination containing that sequence would break out of the tag. Escape "<".
+  const js = JSON.stringify(dest).replace(/</g, '\\u003c')
   return `<!doctype html><html><head><meta charset="utf-8">` +
     `<meta name="referrer" content="no-referrer">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
@@ -552,12 +587,15 @@ function referrerHidePage(dest: string): string {
     `<title>Redirecting…</title></head>` +
     `<body style="font:15px/1.5 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#8A929C;background:#070809;display:grid;place-items:center;height:100vh;margin:0">` +
     `<p>Redirecting… <a href="${attr}" style="color:#3FCF5E;text-decoration:none">Continue →</a></p>` +
-    `<script>location.replace(${JSON.stringify(dest)})</script></body></html>`
+    `<script>location.replace(${js})</script></body></html>`
 }
 
-// CSV: quote a cell only when it needs it (comma, quote, or newline).
+// CSV: quote a cell only when it needs it (comma, quote, or newline). Cells that
+// begin with =, +, -, @, tab or CR are prefixed with a single quote so spreadsheet
+// apps treat them as text, not a formula (CSV/formula-injection mitigation).
 function csvCell(v: unknown): string {
-  const s = v == null ? '' : String(v)
+  let s = v == null ? '' : String(v)
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s
   return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
 }
 function toCsv(rows: unknown[][]): string {

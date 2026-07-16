@@ -9,9 +9,23 @@ export async function getSetting(env: Env, key: string): Promise<string | null> 
   try {
     const row = await env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind(key).first<{ value: string }>()
     return row?.value ?? null
-  } catch {
-    // settings table not migrated yet → fall back to env vars, never lock out
-    return null
+  } catch (e) {
+    // Only tolerate "table not migrated yet" (fall back to env vars). Let real or
+    // transient D1 errors surface so the auth paths fail CLOSED, not open.
+    if (String((e as Error)?.message ?? e).includes('no such table')) return null
+    throw e
+  }
+}
+
+// Load the whole settings table in one query. Use this when a single request needs
+// several settings (e.g. the Settings page) instead of one getSetting round trip each.
+export async function loadSettings(env: Env): Promise<Map<string, string>> {
+  try {
+    const { results } = await env.DB.prepare('SELECT key, value FROM settings').all<{ key: string; value: string }>()
+    return new Map((results ?? []).map((r) => [r.key, r.value]))
+  } catch (e) {
+    if (String((e as Error)?.message ?? e).includes('no such table')) return new Map()
+    throw e
   }
 }
 
@@ -55,7 +69,7 @@ export async function authSecret(env: Env): Promise<string | null> {
 export async function verifyLogin(env: Env, pw: string): Promise<boolean> {
   const hash = await getSetting(env, 'password_hash')
   if (hash) return verifyPassword(pw, hash)
-  return !!env.SITE_PASSWORD && pw === env.SITE_PASSWORD
+  return !!env.SITE_PASSWORD && timingSafeEqual(pw, env.SITE_PASSWORD)
 }
 
 export async function setPassword(env: Env, pw: string): Promise<void> {
@@ -86,7 +100,7 @@ function unhex(s: string): Uint8Array {
   for (let i = 0; i < a.length; i++) a[i] = parseInt(s.slice(i * 2, i * 2 + 2), 16)
   return a
 }
-function timingSafeEqual(a: string, b: string): boolean {
+export function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false
   let r = 0
   for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i)
