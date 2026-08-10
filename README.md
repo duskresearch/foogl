@@ -4,7 +4,7 @@
 
 Short links on your own domain, a clean dashboard you'd actually enjoy using, and simple analytics, with no server to run, no Docker, and no database to provision. It lives entirely on Cloudflare's free tier.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/ekpani/foogl)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/AspatialCo/foogl)
 
 ---
 
@@ -73,7 +73,7 @@ Signed in, the **Settings** link (top-right) runs everything else, no Cloudflare
 ## Run it locally
 
 ```bash
-git clone https://github.com/ekpani/foogl.git
+git clone https://github.com/AspatialCo/foogl.git
 cd foogl
 npm install
 
@@ -172,4 +172,4 @@ MIT. See [LICENSE](./LICENSE) and do what you like with it.
 
 ---
 
-<sub>The name's a wink at goo.gl. The rest is yours to run. Built by [Ekpani](https://ekpani.com).</sub>
+<sub>The name's a wink at goo.gl. The rest is yours to run. Built by [Aspatial](https://aspatial.co).</sub>
