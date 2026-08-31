@@ -66,6 +66,18 @@ const RESERVED = new Set(['api', 'login', 'logout', 'settings'])
 app.use('*', async (c, next) => {
   const hostname = (c.req.header('host') || '').toLowerCase().split(':')[0] // drop any :port
 
+  // Never serve anything over plain HTTP outside local dev: the dashboard has
+  // a password form and the session cookie is only marked Secure on https.
+  // Cloudflare hands the Worker the scheme the visitor used, so a 301 here
+  // covers every host bound to the Worker, custom domains included.
+  const scheme = new URL(c.req.url).protocol
+  if (scheme === 'http:' && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    const u = new URL(c.req.url)
+    u.protocol = 'https:'
+    return c.redirect(u.toString(), 301)
+  }
+  if (scheme === 'https:') c.header('strict-transport-security', 'max-age=31536000')
+
   // www.foo.gl → apex, canonical (avoids duplicate content in search).
   if (hostname === 'www.foo.gl') {
     const u = new URL(c.req.url)
