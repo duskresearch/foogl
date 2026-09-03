@@ -18,15 +18,16 @@ SITE_PASSWORD=
 # encodes. Your links already resolve on every host bound to the Worker.
 # LINK_HOST=go.yourbrand.com
 
-# Optional. Put the dashboard on its own host instead of on the short domain.
-# When set, the short domain becomes redirect-only and the dashboard lives here
-# (e.g. dash.yourbrand.com). Pair it with LINK_HOST set to your short domain so
-# the dashboard shows the right short URLs. Leave unset to keep the dashboard on
-# the short domain itself, at /app. (An `app.` subdomain also always works.)
+# Optional. Put the dashboard on its own host (e.g. dash.yourbrand.com) instead
+# of on an app. subdomain or the short domain. When set, the short domain stays
+# redirect-only and the dashboard lives here. Pair it with LINK_HOST set to your
+# short domain so the dashboard shows the right short URLs. By default (unset)
+# the dashboard is reached on the *.workers.dev URL or any `app.*` host.
 # DASH_HOST=dash.yourbrand.com
 
-# Optional. The path the dashboard lives at ON the short domain, when there is
-# no DASH_HOST. Defaults to "app" (dashboard at yourshort.domain/app). Change it
-# to free up "app" as a normal short link. One path segment; letters, digits,
-# "-" and "_".
-# DASH_PATH=console
+# Optional. Put the dashboard ON the short domain, at this path, so one host
+# does everything (yourshort.domain/<DASH_PATH>). Unset by default, which keeps
+# the short domain redirect-only. Set it (e.g. "app") to opt in; that word then
+# can't be used as a short link. One path segment; reserved route words like
+# login/settings/api fall back to "app". Ignored if DASH_HOST is set.
+# DASH_PATH=app

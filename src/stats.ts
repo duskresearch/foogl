@@ -12,6 +12,7 @@ type StatsData = {
   devices: Row[]
   browsers: Row[]
   error?: string
+  home: string
 }
 
 const STATS_ERRORS: Record<string, string> = {
@@ -28,7 +29,7 @@ export function statsPage(d: StatsData): string {
 
   const body = `
   <main class="wrap">
-    <a class="back" href="/">← All links</a>
+    <a class="back" href="${d.home}">← All links</a>
 
     <div class="detail-head">
       <span class="slug">/${escapeHtml(link.slug)}</span>

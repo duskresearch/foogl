@@ -8,6 +8,7 @@ export type SettingsView = {
   passwordInApp: boolean
   notice?: string
   error?: string
+  home: string
 }
 
 const NOTICES: Record<string, string> = {
@@ -27,7 +28,7 @@ const ERRORS: Record<string, string> = {
 export function settingsPage(d: SettingsView): string {
   const body = `
   <main class="wrap">
-    <a class="back" href="/">← All links</a>
+    <a class="back" href="${d.home}">← All links</a>
     <div class="detail-head"><span class="slug">Settings</span></div>
     <p class="detail-sub">Run your foogl from here. No trip to the Cloudflare dashboard.</p>
 

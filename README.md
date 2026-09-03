@@ -59,24 +59,23 @@ That is the whole thing. No servers, no database to run, nothing to keep patched
 
 ## Put it on your own domain
 
-Your links and dashboard work on the `workers.dev` address right away. To run links on your own short domain, add it as a custom domain on the Worker (*Settings → Domains &amp; Routes → Add → Custom Domain*); Cloudflare provisions the DNS and SSL. Foogl keeps that domain clean by routing on the path:
+Your dashboard and links work on the `workers.dev` address right away. To run links on your own short domain, add it as a custom domain on the Worker (*Settings → Domains &amp; Routes → Add → Custom Domain*); Cloudflare provisions the DNS and SSL.
+
+By default your short domain is **redirect-only**: `…/slug` redirects, the bare domain sends people to your `ROOT_URL`, and the dashboard is never exposed there. You reach the dashboard on the `*.workers.dev` URL, or on an **`app.` subdomain** of your short domain — add `app.go.yourbrand.com` as a second custom domain and any `app.*` host serves the dashboard. This suits a domain used only by Foogl (links on `example.com`, dashboard on `app.example.com`).
+
+**Want everything on one host, no `app.` subdomain?** Set the `DASH_PATH` variable (e.g. `app`) and the dashboard moves onto the short domain at that path:
 
 | Address | What it serves |
 | --- | --- |
-| `go.yourbrand.com/` | Your main site. The bare short domain redirects to `ROOT_URL`. |
+| `go.yourbrand.com/` | Your main site (`ROOT_URL`). |
 | `go.yourbrand.com/slug` | The short link. |
-| `go.yourbrand.com/app` | Your **dashboard** (sign in, manage links). |
+| `go.yourbrand.com/app` | Your **dashboard** (the word you set as `DASH_PATH`). |
 
-So **one custom domain is all you need**: links on it, the dashboard tucked at `/app`.
+That path is then reserved, so pick a word you're happy not to use as a short link (change `DASH_PATH` later to free it). Avoid `login`, `settings`, `api`, and the like — those fall back to `app`.
 
-**Want the dashboard on its own host instead?** Two ways:
+**Prefer the dashboard on a different host entirely?** Set `DASH_HOST` to any host (e.g. `dash.yourbrand.com`), add it as a custom domain, and set `LINK_HOST` to your short domain so the dashboard shows the right short URLs. The short domain stays redirect-only. This is the clean way to avoid a nested `app.go.yourbrand.com` when your short domain is itself a subdomain.
 
-- **An `app.` subdomain** suits a domain used *only* by Foogl (links on `example.com`, dashboard on `app.example.com`). Add `app.` plus your domain as a second custom domain. Any `app.*` host serves the dashboard, and the short domain then stays redirect-only.
-- **`DASH_HOST`** for any other host. Set the `DASH_HOST` variable to the host you want (e.g. `dash.yourbrand.com`), add it as a custom domain, and set `LINK_HOST` to your short domain so the dashboard shows the right short URLs. The short domain becomes redirect-only. This is the clean way to avoid a nested `app.go.yourbrand.com` when your short domain is itself a subdomain.
-
-**Reclaiming `app`.** The dashboard path defaults to `app`, so `app` can't be a short link. Set the `DASH_PATH` variable to something else (e.g. `console`) to move the dashboard to `/console` and free `app` as a normal slug.
-
-**Good to know:** the `*.workers.dev` URL always serves the dashboard, so it is a way in even before any custom domain exists. Keep it enabled (it is by default). `DASH_HOST`, `DASH_PATH` and `LINK_HOST` are set under the Worker's *Settings → Variables*.
+**Good to know:** the `*.workers.dev` URL always serves the dashboard, so it is a way in even before any custom domain exists. `DASH_HOST`, `DASH_PATH` and `LINK_HOST` are set under the Worker's *Settings → Variables*.
 
 ## Set the rest from the dashboard
 

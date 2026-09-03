@@ -7,7 +7,7 @@ import { gate, handleLogin, handleLogout, isAuthed, issueSession } from './auth'
 import {
   getSetting, setSetting, effectiveRootUrl, effectiveApiToken, defaultPermanent,
   createPassword, timingSafeEqual,
-  hasPassword, verifyLogin, setPassword, generateToken, timingSafeEqual, loadSettings,
+  hasPassword, verifyLogin, setPassword, generateToken, loadSettings,
 } from './settings'
 import { parseClick, isCrawler, clientTraits } from './ua'
 import { parseRules, resolveTarget } from './targeting'
@@ -69,21 +69,31 @@ const app = new Hono<{ Bindings: Env }>()
 // Slugs that would collide with our own routes.
 const RESERVED = new Set(['api', 'login', 'logout', 'settings'])
 
+// Top-level route words the dashboard path must never shadow, or the dashboard
+// home would intercept a real route (e.g. DASH_PATH=login would loop forever).
+const DASH_PATH_BLOCK = new Set(['api', 'login', 'logout', 'setup', 'settings', 'stats', 'qr'])
 // The dashboard's path segment on the short domain (see DASH_PATH). Defaults to
-// "app"; sanitised to a single path segment.
+// "app"; sanitised to one path segment and never a reserved route word.
 function dashPath(env: Env): string {
   const raw = (env.DASH_PATH ?? 'app')
     .toLowerCase()
     .replace(/^\/+|\/+$/g, '')
     .replace(/[^a-z0-9_-]/g, '')
-  return raw || 'app'
+  return !raw || DASH_PATH_BLOCK.has(raw) ? 'app' : raw
 }
-// Slugs that can't be minted because they'd collide with our own routes. When
-// the dashboard sits on the short domain (no DASH_HOST), its path is reserved
-// too — so changing DASH_PATH frees the old word. With a separate DASH_HOST the
-// short domain is pure redirect and only the base words are reserved.
-function reservedSlugs(env: Env): Set<string> {
-  return env.DASH_HOST ? new Set(RESERVED) : new Set([...RESERVED, dashPath(env)])
+// Whether the dashboard is served ON the short domain, at /<DASH_PATH>. It is
+// opt-in: only when the operator sets DASH_PATH and hasn't put the dashboard on
+// its own DASH_HOST. Off by default, so a bare short domain stays redirect-only,
+// never exposes the dashboard, and never reserves a slug the operator didn't ask
+// for. (app.* and *.workers.dev remain dashboard hosts regardless.)
+function dashOnShortHost(env: Env): boolean {
+  return !env.DASH_HOST && !!env.DASH_PATH && env.DASH_PATH.trim() !== ''
+}
+// A slug can't be minted if it collides with one of our routes: the base set
+// always, plus the dashboard path when the dashboard lives on the short domain.
+function isReservedSlug(slug: string, env: Env): boolean {
+  const s = slug.toLowerCase()
+  return RESERVED.has(s) || (dashOnShortHost(env) && s === dashPath(env))
 }
 
 // ───────────────────────────────────────────────────────────
@@ -96,7 +106,7 @@ function reservedSlugs(env: Env): Set<string> {
 // Runs before every route below.
 // ───────────────────────────────────────────────────────────
 app.use('*', async (c, next) => {
-  const hostname = (c.req.header('host') || '').toLowerCase().split(':')[0] // drop any :port
+  const hostname = hostOf(c) // lowercased, any :port dropped
 
   // Never serve anything over plain HTTP outside local dev: the dashboard has
   // a password form and the session cookie is only marked Secure on https.
@@ -138,7 +148,7 @@ app.use('*', async (c, next) => {
     // A bare /slug falls through to the redirect route; everything else stays
     // the landing, so the dashboard is never exposed on the marketing host.
     const m = /^\/([a-zA-Z0-9_-]+)$/.exec(p)
-    if (m && !reservedSlugs(c.env).has(m[1].toLowerCase())) return next()
+    if (m && !isReservedSlug(m[1], c.env)) return next()
     return c.html(LANDING_HTML)
   }
 
@@ -146,26 +156,28 @@ app.use('*', async (c, next) => {
   // the configured DASH_HOST, an app.* subdomain, workers.dev, or local dev.
   if (isDashboardHost(hostname, c.env)) return next()
 
-  // A customer's short domain. Two shapes:
-  //   • DASH_HOST set  → this host is redirect-only; the dashboard is elsewhere.
-  //   • no DASH_HOST   → the dashboard lives HERE, at /<DASH_PATH> (default
-  //                      /app), while / and unknown paths still redirect out.
+  // A customer's short domain.
   const p = c.req.path
-  const rsv = reservedSlugs(c.env)
-  if (!c.env.DASH_HOST) {
-    const dp = dashPath(c.env)
-    if (p === '/' + dp) return renderDashboard(c) // the dashboard home
-    // The rest of the dashboard surface stays on its fixed root paths.
-    if (
-      p === '/login' || p === '/logout' || p === '/setup' || p === '/settings' ||
-      p === '/api' || p.startsWith('/api/') || p.endsWith('/stats') || p.endsWith('/qr')
-    )
-      return next()
+  if (dashOnShortHost(c.env)) {
+    // The operator opted to run the dashboard on this host at /<DASH_PATH>, so
+    // serve the whole app here (home, login, settings, API, CSV, per-link pages,
+    // fonts, PWA assets) — except the bare domain still goes to their main site,
+    // and a single-segment /slug still resolves as a short link.
+    if (p !== '/') {
+      const dp = dashPath(c.env)
+      if (p === '/' + dp) return renderDashboard(c) // the dashboard home
+      const m = /^\/([a-zA-Z0-9_-]+)$/.exec(p)
+      if (m && !isReservedSlug(m[1], c.env)) return next() // /slug → redirect route
+      return next() // any other path (assets, /api/*, *.csv, /login, /settings, /:slug/stats…) → its route
+    }
+    const root = await effectiveRootUrl(c.env)
+    return root ? c.redirect(root, 302) : c.notFound()
   }
-  // Redirect-only from here: /slug resolves, root and everything else go to the
-  // operator's main site (ROOT_URL) if set, else a plain 404.
+  // Redirect-only short domain (the default, and whenever DASH_HOST is set): a
+  // /slug resolves, the root and everything else go to the operator's main site
+  // (ROOT_URL) if set, else a plain 404. The dashboard is never exposed here.
   const m = /^\/([a-zA-Z0-9_-]+)$/.exec(p)
-  if (m && !rsv.has(m[1].toLowerCase())) return next() // /slug → redirect route
+  if (m && !isReservedSlug(m[1], c.env)) return next() // /slug → redirect route
   const root = await effectiveRootUrl(c.env)
   return root ? c.redirect(root, 302) : c.notFound()
 })
@@ -264,7 +276,8 @@ app.post('/api/links', gate, async (c) => {
     permanent: !!form.permanent,
     hide_referrer: !!form.hide_referrer,
   })
-  return c.redirect(r.ok ? '/' : '/?error=' + r.error)
+  const home = dashHomeFor(hostOf(c), c.env)
+  return c.redirect(r.ok ? home : home + '?error=' + r.error)
 })
 
 // ───────────────────────────────────────────────────────────
@@ -298,7 +311,7 @@ app.post('/api/links/:slug/delete', gate, async (c) => {
     c.env.DB.prepare('DELETE FROM links WHERE slug = ?').bind(slug),
     c.env.DB.prepare('DELETE FROM clicks WHERE slug = ?').bind(slug),
   ])
-  return c.redirect('/')
+  return c.redirect(dashHomeFor(hostOf(c), c.env))
 })
 
 // ───────────────────────────────────────────────────────────
@@ -318,6 +331,7 @@ app.get('/settings', gate, async (c) => {
       passwordInApp: s.get('password_hash') != null,
       notice: c.req.query('saved'),
       error: c.req.query('error'),
+      home: dashHomeFor(hostOf(c), c.env),
     }),
   )
 })
@@ -426,6 +440,7 @@ app.get('/:slug/stats', gate, async (c) => {
       browsers: browsers.results ?? [],
       last7: last7?.n ?? 0,
       error: c.req.query('error'),
+      home: dashHomeFor(hostOf(c), c.env),
     }),
   )
 })
@@ -566,7 +581,7 @@ app.get('/:slug', async (c) => {
   if (!link || isExpired(link)) {
     // On the marketing host an unknown slug is a plain 404, never a ROOT_URL bounce,
     // so a typo'd foo.gl link never redirects off the branded domain.
-    const host = (c.req.header('host') || '').toLowerCase().split(':')[0]
+    const host = hostOf(c)
     if (host === 'foo.gl' || host === 'www.foo.gl') return c.notFound()
     const root = await effectiveRootUrl(c.env)
     return root ? c.redirect(root, 302) : c.notFound()
@@ -668,7 +683,7 @@ async function createLink(
   let slug = (input.slug ?? '').trim()
   if (!slug) slug = randomSlug()
   if (slug.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(slug)) return { ok: false, error: 'badslug' }
-  if (reservedSlugs(env).has(slug.toLowerCase())) return { ok: false, error: 'reserved' }
+  if (isReservedSlug(slug, env)) return { ok: false, error: 'reserved' }
   const exp = normalizeExpiry(input.expires_at)
   if (exp === false) return { ok: false, error: 'badexp' }
   const parsed = parseRules(input.rules)
@@ -772,8 +787,10 @@ function hostOf(c: Context<{ Bindings: Env }>): string {
 }
 // Where the dashboard "home" lives for a given host: "/" on a real dashboard
 // host, or /<DASH_PATH> when the dashboard sits on the short domain itself.
+// Used for post-action redirects and the dashboard's own back-navigation.
 function dashHomeFor(host: string, env: Env): string {
-  return isDashboardHost(host, env) ? '/' : '/' + dashPath(env)
+  if (isDashboardHost(host, env)) return '/'
+  return dashOnShortHost(env) ? '/' + dashPath(env) : '/'
 }
 
 // The base URL to SHOW short links on. LINK_HOST wins if set. Otherwise, when
