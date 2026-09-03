@@ -1,4 +1,4 @@
-# foogl
+# Foogl
 
 **A tiny, self-hosted link shortener you deploy to Cloudflare in one click.**
 
@@ -47,7 +47,7 @@ It deliberately does *less* than the big shorteners. No teams, no affiliate prog
 Clicking **Deploy to Cloudflare** hands the whole setup to Cloudflare. Here is exactly what happens, and the little you do.
 
 1. **Sign in to Cloudflare.** The button takes you there. A free account is all you need.
-2. **Let it connect to your GitHub.** Cloudflare copies foogl into a brand-new repository on *your* GitHub account. That copy is yours to keep and redeploy. Authorize it when asked.
+2. **Let it connect to your GitHub.** Cloudflare copies Foogl into a brand-new repository on *your* GitHub account. That copy is yours to keep and redeploy. Authorize it when asked.
 3. **Set your dashboard password.** On the single setup page there is a field for **`SITE_PASSWORD`**. This is the only thing guarding your dashboard, so make it a strong one. (The Worker name and database name are pre-filled. The defaults are fine.)
 4. **Click deploy and wait a minute or two.** Cloudflare now does the rest for you: it creates your database, builds the tables (runs the migrations), and publishes the Worker. You never touch a command line.
 5. **Open your dashboard.** When it finishes, Cloudflare shows your new Worker with an address like `https://foogl-abc123.your-name.workers.dev`. Click **Visit** (or find it later under *Workers &amp; Pages → your worker → Visit*). That page is your dashboard.
@@ -59,7 +59,7 @@ That is the whole thing. No servers, no database to run, nothing to keep patched
 
 ## Put it on your own domain
 
-Your links work on the `workers.dev` address right away, but you will want them on your own short domain. foogl decides what to serve by hostname, which keeps your short domain clean:
+Your links work on the `workers.dev` address right away, but you will want them on your own short domain. Foogl decides what to serve by hostname, which keeps your short domain clean:
 
 | Address | What it serves |
 | --- | --- |
@@ -174,7 +174,7 @@ Errors come back as `{ "error": "..." }` with a matching HTTP status: `401` (bad
 - **[D1](https://developers.cloudflare.com/d1/)**, Cloudflare's built-in SQLite; holds your links and clicks
 - **No build step.** The dashboard is server-rendered HTML with hand-written CSS
 
-## Forking foogl?
+## Forking Foogl?
 
 The repo ships with the marketing landing page for [foo.gl](https://foo.gl), which only ever renders on the `foo.gl` host, so on your own deployment it never shows. If you want it out of your fork entirely, delete `src/landing-assets.ts` and remove the `if (hostname === 'foo.gl')` / `www.foo.gl` branch in the host-routing middleware at the top of `src/index.ts`. The shortener and dashboard are unaffected.
 
