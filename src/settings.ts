@@ -72,6 +72,17 @@ export async function verifyLogin(env: Env, pw: string): Promise<boolean> {
   return !!env.SITE_PASSWORD && timingSafeEqual(pw, env.SITE_PASSWORD)
 }
 
+// First-run only: create the password if and only if none exists yet. Two
+// concurrent setup posts can both pass hasPassword(); the insert's conflict
+// clause makes exactly one of them win.
+export async function createPassword(env: Env, pw: string): Promise<boolean> {
+  const res = await env.DB.prepare(
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING',
+  )
+    .bind('password_hash', await hashPassword(pw))
+    .run()
+  return (res.meta.changes ?? 0) > 0
+}
 export async function setPassword(env: Env, pw: string): Promise<void> {
   await setSetting(env, 'password_hash', await hashPassword(pw))
 }

@@ -47,19 +47,28 @@ export function loginPage(error?: string): string {
 }
 
 // ── first-run setup (shown when SITE_PASSWORD is not set yet) ───────────────
-export function setupPage(): string {
-  return layout('Finish setting up foogl', `
+export function setupPage(setupKey = '', error = ''): string {
+  const ERR: Record<string, string> = {
+    short: 'Use at least 8 characters.',
+    mismatch: 'The two passwords don’t match.',
+    badkey: 'That setup link isn’t valid. Use the exact link your installer gave you.',
+    unmigrated: 'The database isn’t initialised yet. Run the migrations, then reload.',
+  }
+  return layout('Choose a password · foogl', `
   <main class="login-wrap">
     <div class="login-card setup">
-      <div class="brand center"><span class="dot"></span><h1>Almost there.</h1></div>
-      <p class="sub center">foogl is deployed. It just needs a dashboard password before you can sign in.</p>
-      <ol class="steps">
-        <li>Open this Worker in the <b>Cloudflare dashboard</b>.</li>
-        <li>Go to <b>Settings → Variables and Secrets</b>.</li>
-        <li>Add a <b>Secret</b> named <code>SITE_PASSWORD</code>, give it a strong value, and click <b>Deploy</b>.</li>
-        <li>Come back here, reload, and sign in.</li>
-      </ol>
-      <a class="ghost setup-reload" href="/login">Reload</a>
+      <div class="brand center"><span class="dot"></span><h1>Choose a password</h1></div>
+      <p class="sub center">foogl is deployed. Set the one password that guards this dashboard.</p>
+      ${error ? `<p class="sub center" role="alert">${ERR[error] ?? 'Could not finish setup.'}</p>` : ''}
+      <form method="POST" action="/setup">
+        ${setupKey ? `<input type="hidden" name="key" value="${escapeAttr(setupKey)}"/>` : ''}
+        <label for="pw">Password</label>
+        <input id="pw" type="password" name="password" minlength="8" required autofocus placeholder="At least 8 characters"/>
+        <label for="pw2">Same again</label>
+        <input id="pw2" type="password" name="confirm" minlength="8" required/>
+        <button type="submit">Set password and sign in</button>
+      </form>
+      <p class="sub center" style="margin-top:14px">Prefer a secret instead? Add <code>SITE_PASSWORD</code> under the Worker’s Settings → Variables and Secrets, and reload.</p>
     </div>
   </main>`)
 }

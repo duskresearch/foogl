@@ -6,6 +6,7 @@ import { settingsPage } from './settings-view'
 import { gate, handleLogin, handleLogout, isAuthed, issueSession } from './auth'
 import {
   getSetting, setSetting, effectiveRootUrl, effectiveApiToken, defaultPermanent,
+  createPassword, timingSafeEqual,
   hasPassword, verifyLogin, setPassword, generateToken, timingSafeEqual, loadSettings,
 } from './settings'
 import { parseClick, isCrawler, clientTraits } from './ua'
@@ -126,8 +127,40 @@ app.use('*', async (c, next) => {
 // AUTH (public: login page + form; logout)
 // ───────────────────────────────────────────────────────────
 app.get('/login', async (c) =>
-  c.html((await hasPassword(c.env)) ? loginPage(c.req.query('error')) : setupPage()),
+  c.html(
+    (await hasPassword(c.env))
+      ? loginPage(c.req.query('error'))
+      : setupPage(c.req.query('key') ?? '', c.req.query('error') ?? ''),
+  ),
 )
+// First-run: create the dashboard password in the browser. If the installer
+// stored a one-time claim token (settings key setup_token), the request must
+// carry it; the token burns on success. Without a token the instance behaves
+// like the classic first-visit setup.
+app.post('/setup', async (c) => {
+  if (await hasPassword(c.env)) return c.redirect('/login')
+  const body = await c.req.parseBody()
+  const pw = String(body.password ?? '')
+  const confirm = String(body.confirm ?? '')
+  const key = String(body.key ?? '')
+  const back = key ? `&key=${encodeURIComponent(key)}` : ''
+  try {
+    const stored = await getSetting(c.env, 'setup_token')
+    if (stored && !timingSafeEqual(key, stored)) return c.redirect('/login?error=badkey')
+    if (pw.length < 8) return c.redirect(`/login?error=short${back}`)
+    if (pw !== confirm) return c.redirect(`/login?error=mismatch${back}`)
+    const created = await createPassword(c.env, pw)
+    if (!created) return c.redirect('/login')
+    if (stored) await setSetting(c.env, 'setup_token', null) // burn the claim token
+  } catch (e) {
+    if (String((e as Error)?.message ?? e).includes('no such table')) {
+      return c.redirect(`/login?error=unmigrated${back}`)
+    }
+    throw e
+  }
+  await issueSession(c)
+  return c.redirect('/')
+})
 // Best-effort brute-force brake, per isolate: five bad passwords from one
 // address buys a minute of lockout. Real rate limiting belongs in front (WAF);
 // this makes unattended guessing expensive even on a bare deploy.
