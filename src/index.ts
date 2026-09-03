@@ -13,6 +13,7 @@ import { parseRules, resolveTarget } from './targeting'
 import { ogPage, hasOg } from './og'
 import { DEPARTURE_MONO_WOFF2_B64 } from './font'
 import { LANDING_HTML, OG_PNG_B64, QR_SVG, FAVICON_SVG, ROBOTS_TXT, SITEMAP_XML } from './landing-assets'
+import { AGENT_MD, LLMS_TXT } from './agent-md'
 import { MANIFEST, SW_JS, FAVICON_SVG as APP_FAVICON, ICON_192_B64, ICON_512_B64, ICON_180_B64 } from './pwa-assets'
 
 // Resources this Worker can talk to. DB is the D1 database from wrangler.jsonc;
@@ -90,6 +91,8 @@ app.use('*', async (c, next) => {
     const p = c.req.path
     if (p === '/_f/dm.woff2') return next() // font is served by the route below
     if (p === '/robots.txt') return c.body(ROBOTS_TXT, 200, { 'content-type': 'text/plain; charset=utf-8' })
+    if (p === '/llms.txt') return c.body(LLMS_TXT, 200, { 'content-type': 'text/plain; charset=utf-8' })
+    if (p === '/agent.md') return c.body(AGENT_MD, 200, { 'content-type': 'text/markdown; charset=utf-8' })
     if (p === '/sitemap.xml') return c.body(SITEMAP_XML, 200, { 'content-type': 'application/xml; charset=utf-8' })
     if (p === '/favicon.svg') return c.body(FAVICON_SVG, 200, { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' })
     if (p === '/qr.svg') return c.body(QR_SVG, 200, { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' })

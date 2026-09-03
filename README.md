@@ -8,6 +8,18 @@ Short links on your own domain, a clean dashboard you'd actually enjoy using, an
 
 ---
 
+## Set it up with your agent
+
+Tell Claude Code, Cursor, or any coding agent:
+
+> Read https://foo.gl/agent.md and set up foogl on my own Cloudflare account.
+> It has every step and check; ask me only for what it says to ask.
+
+The runbook walks the agent through the database, migrations, the password
+secret, deploy, verification, and an optional custom domain, with a check
+after every step. You will be asked for exactly two things: a dashboard
+password and (optionally) your short domain.
+
 ## What you get
 
 - **Create short links.** Auto-generated or your own custom slug
