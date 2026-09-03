@@ -1,0 +1,12 @@
+// Staging preview of the LANDING only, on workers.dev. FORCE_LANDING renders
+// the marketing page on any host. Never given routes; production stays put.
+{
+  "name": "foogl-staging",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "workers_dev": true,
+  "vars": { "FORCE_LANDING": "1" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "foogl-db", "database_id": "640e8f18-9cef-43e1-9000-a80cdea5be2f" }
+  ]
+}
