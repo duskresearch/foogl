@@ -76,6 +76,19 @@ export function docsPage() {
     '<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>' +
     '<title>Documentation \u00b7 Foogl</title>' +
     '<meta name="description" content="How to deploy, configure, and use Foogl, the self-hosted link shortener."/>' +
+    '<link rel="canonical" href="https://foo.gl/docs"/>' +
+    '<meta name="robots" content="index,follow"/>' +
+    '<meta property="og:type" content="article"/>' +
+    '<meta property="og:site_name" content="Foogl"/>' +
+    '<meta property="og:title" content="Foogl Documentation"/>' +
+    '<meta property="og:description" content="How to deploy, configure, and use Foogl, the self-hosted link shortener."/>' +
+    '<meta property="og:url" content="https://foo.gl/docs"/>' +
+    '<meta property="og:image" content="https://foo.gl/og.png"/>' +
+    '<meta name="twitter:card" content="summary_large_image"/>' +
+    '<meta name="twitter:title" content="Foogl Documentation"/>' +
+    '<meta name="twitter:description" content="How to deploy, configure, and use Foogl, the self-hosted link shortener."/>' +
+    '<meta name="twitter:image" content="https://foo.gl/og.png"/>' +
+    '<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","@id":"https://foo.gl/docs#article","headline":"Foogl Documentation","description":"How to deploy, configure, and use Foogl, the self-hosted link shortener.","inLanguage":"en","url":"https://foo.gl/docs","author":{"@type":"Organization","name":"Dusk Research","url":"https://duskresearch.com"},"publisher":{"@type":"Organization","name":"Dusk Research","url":"https://duskresearch.com"},"about":{"@type":"SoftwareApplication","name":"Foogl","applicationCategory":"DeveloperApplication","url":"https://foo.gl/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://foo.gl/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://foo.gl/docs"}]}]}</script>' +
     '<link rel="icon" href="/favicon.svg" type="image/svg+xml"/>' +
     '<style>' + DOCS_CSS + '</style></head><body>' +
     '<header class="top"><a class="wm" href="/">foogl</a><span class="bc">/ docs</span></header>' +
