@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import QRCode from 'qrcode-svg'
 import { dashboardPage, loginPage, setupPage, escapeAttr } from './views'
 import { statsPage } from './stats'
@@ -34,6 +34,17 @@ export type Env = {
   // open the dashboard (e.g. manage on *.workers.dev, share on foo.gl). Cosmetic
   // only — sets what the dashboard shows, the QR encodes, and the API returns.
   LINK_HOST?: string
+  // Optional: put the dashboard on its own host (e.g. "app.example.com" or
+  // "dash.example.com"). When set, the short domain is redirect-only and never
+  // exposes the dashboard. Pair it with LINK_HOST so the dashboard shows the
+  // right short URLs. Leave unset to keep the dashboard on the short domain
+  // itself, under DASH_PATH.
+  DASH_HOST?: string
+  // Optional: the path the dashboard lives at ON the short domain, when there
+  // is no separate DASH_HOST. Defaults to "app" (dashboard at
+  // yourshort.domain/app). Change it (e.g. "console") to free up "app" as a
+  // normal short link. One path segment: letters, digits, "-" and "_".
+  DASH_PATH?: string
   FORCE_LANDING?: string // staging only: render the marketing landing on any host
 }
 
@@ -57,6 +68,23 @@ const app = new Hono<{ Bindings: Env }>()
 
 // Slugs that would collide with our own routes.
 const RESERVED = new Set(['api', 'login', 'logout', 'settings'])
+
+// The dashboard's path segment on the short domain (see DASH_PATH). Defaults to
+// "app"; sanitised to a single path segment.
+function dashPath(env: Env): string {
+  const raw = (env.DASH_PATH ?? 'app')
+    .toLowerCase()
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/[^a-z0-9_-]/g, '')
+  return raw || 'app'
+}
+// Slugs that can't be minted because they'd collide with our own routes. When
+// the dashboard sits on the short domain (no DASH_HOST), its path is reserved
+// too — so changing DASH_PATH frees the old word. With a separate DASH_HOST the
+// short domain is pure redirect and only the base words are reserved.
+function reservedSlugs(env: Env): Set<string> {
+  return env.DASH_HOST ? new Set(RESERVED) : new Set([...RESERVED, dashPath(env)])
+}
 
 // ───────────────────────────────────────────────────────────
 // HOST ROUTING — one Worker, three roles decided by the host:
@@ -110,19 +138,34 @@ app.use('*', async (c, next) => {
     // A bare /slug falls through to the redirect route; everything else stays
     // the landing, so the dashboard is never exposed on the marketing host.
     const m = /^\/([a-zA-Z0-9_-]+)$/.exec(p)
-    if (m && !RESERVED.has(m[1].toLowerCase())) return next()
+    if (m && !reservedSlugs(c.env).has(m[1].toLowerCase())) return next()
     return c.html(LANDING_HTML)
   }
 
-  // Dashboard hosts get the full app (login, manage, API, stats, PWA, CSV).
-  if (isDashboardHost(hostname)) return next()
+  // Dashboard hosts get the full app (login, manage, API, stats, PWA, CSV):
+  // the configured DASH_HOST, an app.* subdomain, workers.dev, or local dev.
+  if (isDashboardHost(hostname, c.env)) return next()
 
-  // Otherwise this is a bare short domain: redirect-only.
+  // A customer's short domain. Two shapes:
+  //   • DASH_HOST set  → this host is redirect-only; the dashboard is elsewhere.
+  //   • no DASH_HOST   → the dashboard lives HERE, at /<DASH_PATH> (default
+  //                      /app), while / and unknown paths still redirect out.
   const p = c.req.path
+  const rsv = reservedSlugs(c.env)
+  if (!c.env.DASH_HOST) {
+    const dp = dashPath(c.env)
+    if (p === '/' + dp) return renderDashboard(c) // the dashboard home
+    // The rest of the dashboard surface stays on its fixed root paths.
+    if (
+      p === '/login' || p === '/logout' || p === '/setup' || p === '/settings' ||
+      p === '/api' || p.startsWith('/api/') || p.endsWith('/stats') || p.endsWith('/qr')
+    )
+      return next()
+  }
+  // Redirect-only from here: /slug resolves, root and everything else go to the
+  // operator's main site (ROOT_URL) if set, else a plain 404.
   const m = /^\/([a-zA-Z0-9_-]+)$/.exec(p)
-  if (m && !RESERVED.has(m[1].toLowerCase())) return next() // /slug → redirect route
-  // Root and everything else (incl. would-be dashboard paths) → the operator's
-  // main site if set, else a plain 404. No dashboard on a bare short domain.
+  if (m && !rsv.has(m[1].toLowerCase())) return next() // /slug → redirect route
   const root = await effectiveRootUrl(c.env)
   return root ? c.redirect(root, 302) : c.notFound()
 })
@@ -163,7 +206,7 @@ app.post('/setup', async (c) => {
     throw e
   }
   await issueSession(c)
-  return c.redirect('/')
+  return c.redirect(dashHomeFor(hostOf(c), c.env))
 })
 // Best-effort brute-force brake, per isolate: five bad passwords from one
 // address buys a minute of lockout. Real rate limiting belongs in front (WAF);
@@ -180,6 +223,10 @@ app.post('/login', async (c) => {
     if (loginFails.size > 10_000) loginFails.clear()
   } else {
     loginFails.delete(ip)
+    // handleLogin sends a successful sign-in to "/"; on a short domain the
+    // dashboard home is /<DASH_PATH>, so redirect them there instead.
+    const home = dashHomeFor(hostOf(c), c.env)
+    if ((res.headers.get('location') || '') === '/' && home !== '/') return c.redirect(home)
   }
   return res
 })
@@ -188,17 +235,18 @@ app.post('/logout', handleLogout)
 // ───────────────────────────────────────────────────────────
 // DASHBOARD (gated) — list every link, newest first
 // ───────────────────────────────────────────────────────────
-app.get('/', async (c) => {
-  // This route only runs on dashboard hosts (app.*, workers.dev, localhost) —
-  // bare short domains are handled by the host-routing middleware above. So an
-  // unauthenticated visitor here just gets the sign-in page.
+// The dashboard home. On a dashboard host it renders at "/"; on a short domain
+// the host-routing middleware serves it at /<DASH_PATH> instead. Either way an
+// unauthenticated visitor is sent to the sign-in page.
+async function renderDashboard(c: Context<{ Bindings: Env }>) {
   if (!(await isAuthed(c))) return c.redirect('/login')
   const { results } = await c.env.DB.prepare(
     'SELECT * FROM links ORDER BY created_at DESC',
   ).all<LinkRow>()
   const origin = linkBase(c.env, c.req.url)
   return c.html(dashboardPage(results ?? [], origin, c.req.query('error'), await defaultPermanent(c.env)))
-})
+}
+app.get('/', (c) => renderDashboard(c))
 
 // ───────────────────────────────────────────────────────────
 // CREATE (gated)
@@ -620,7 +668,7 @@ async function createLink(
   let slug = (input.slug ?? '').trim()
   if (!slug) slug = randomSlug()
   if (slug.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(slug)) return { ok: false, error: 'badslug' }
-  if (RESERVED.has(slug.toLowerCase())) return { ok: false, error: 'reserved' }
+  if (reservedSlugs(env).has(slug.toLowerCase())) return { ok: false, error: 'reserved' }
   const exp = normalizeExpiry(input.expires_at)
   if (exp === false) return { ok: false, error: 'badexp' }
   const parsed = parseRules(input.rules)
@@ -702,15 +750,30 @@ function toCsv(rows: unknown[][]): string {
   return rows.map((r) => r.map(csvCell).join(',')).join('\r\n')
 }
 
-// A host is a "dashboard host" if it's the app.* subdomain, the workers.dev
-// URL (so a fresh deploy works before custom domains), or local dev.
-function isDashboardHost(hostname: string): boolean {
+// A host is a "dashboard host" if it's the configured DASH_HOST, an app.*
+// subdomain, the workers.dev URL (so a fresh deploy works before custom
+// domains), or local dev.
+function isDashboardHost(hostname: string, env: Env): boolean {
+  const dh = (env.DASH_HOST ?? '')
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '')
   return (
+    (dh !== '' && hostname === dh) ||
     hostname.startsWith('app.') ||
     hostname.endsWith('.workers.dev') ||
     hostname === 'localhost' ||
     hostname === '127.0.0.1'
   )
+}
+// The host of the current request, lowercased and port-stripped.
+function hostOf(c: Context<{ Bindings: Env }>): string {
+  return (c.req.header('host') || '').toLowerCase().split(':')[0]
+}
+// Where the dashboard "home" lives for a given host: "/" on a real dashboard
+// host, or /<DASH_PATH> when the dashboard sits on the short domain itself.
+function dashHomeFor(host: string, env: Env): string {
+  return isDashboardHost(host, env) ? '/' : '/' + dashPath(env)
 }
 
 // The base URL to SHOW short links on. LINK_HOST wins if set. Otherwise, when
