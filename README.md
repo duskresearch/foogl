@@ -184,4 +184,4 @@ MIT. See [LICENSE](./LICENSE) and do what you like with it.
 
 ---
 
-<sub>The name's a wink at goo.gl. The rest is yours to run. Built by [Dusk Research](https://duskresearch.com).</sub>
+<sub>Yours to run, on your own domain. Built by [Dusk Research](https://duskresearch.com).</sub>
