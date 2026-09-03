@@ -5,7 +5,8 @@
   "description": "A beautifully simple, one-click self-hosted link shortener.",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "npm run db:migrate:remote && wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "deploy": "npm run typecheck && npm run db:migrate:remote && wrangler deploy",
     "db:create": "wrangler d1 create foogl-db",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
@@ -16,6 +17,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241218.0",
+    "typescript": "^5.7.2",
     "wrangler": "^4.0.0"
   },
   "cloudflare": {

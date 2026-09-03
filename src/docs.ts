@@ -5,20 +5,20 @@ export const DOCS_MD = "# Foogl Documentation\n\nA tiny, self-hosted link shorte
 
 const DOCS_CSS = ":root{--bg:#0E0E10;--surface:#17171a;--ink:#F4EEDF;--sec:#b7b1a3;--muted:#6f6a5e;--accent:#3FCF5E;--border:#26262b;--mono:'Departure Mono',ui-monospace,SFMono-Regular,Menlo,monospace}\n*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}\n@font-face{font-family:'Departure Mono';src:url('/_f/dm.woff2') format('woff2');font-weight:400;font-display:swap}\na{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}\n.top{border-bottom:1px solid var(--border);padding:18px 24px;display:flex;align-items:center;gap:14px;position:sticky;top:0;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);z-index:5}\n.top .wm{font-family:var(--mono);font-size:15px;color:var(--ink)}.top .bc{color:var(--muted);font-size:14px}\n.wrap{max-width:1080px;margin:0 auto;padding:0 24px;display:grid;grid-template-columns:220px minmax(0,1fr);gap:48px}\nnav.toc{position:sticky;top:80px;align-self:start;padding-top:40px;display:flex;flex-direction:column;gap:9px;font-family:var(--mono);font-size:12px;letter-spacing:.02em}\nnav.toc a{color:var(--sec)}nav.toc a:hover{color:var(--ink);text-decoration:none}\nmain{padding:40px 0 120px;min-width:0}\nh1{font-size:30px;line-height:1.15;letter-spacing:-.02em;margin:0 0 8px}\nh2{font-size:21px;letter-spacing:-.01em;margin:44px 0 12px;padding-top:8px}\nh3{font-size:16px;margin:26px 0 8px;color:var(--ink)}\np{margin:12px 0;color:var(--sec)}li{margin:5px 0;color:var(--sec)}ul,ol{padding-left:22px}ol li{margin:6px 0}\nstrong{color:var(--ink);font-weight:640}\ncode{font-family:var(--mono);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:1px 5px;color:var(--ink)}\npre{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;overflow-x:auto;margin:16px 0}\npre code{background:none;border:0;padding:0;font-size:13px;line-height:1.6;color:var(--ink)}\nblockquote{border-left:2px solid var(--accent);margin:16px 0;padding:4px 0 4px 16px;color:var(--ink)}\n.tw{overflow-x:auto;margin:16px 0}table{border-collapse:collapse;width:100%;font-size:14px}\nth,td{text-align:left;padding:9px 14px;border-bottom:1px solid var(--border);vertical-align:top}th{color:var(--muted);font-family:var(--mono);font-size:12px;font-weight:400;text-transform:uppercase;letter-spacing:.05em}\ntd{color:var(--sec)}\n.foot{border-top:1px solid var(--border);margin-top:60px;padding-top:20px;font-family:var(--mono);font-size:12px;color:var(--muted)}\n@media(max-width:760px){.wrap{grid-template-columns:1fr;gap:0}nav.toc{display:none}}"
 
-function esc(s) {
+function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
-function inlineMd(s) {
+function inlineMd(s: string): string {
   s = esc(s)
-  s = s.replace(/`([^`]+)`/g, (_m, c) => '<code>' + c + '</code>')
-  s = s.replace(/\*\*([^*]+)\*\*/g, (_m, c) => '<strong>' + c + '</strong>')
-  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, t, u) => '<a href="' + u + '">' + t + '</a>')
+  s = s.replace(/`([^`]+)`/g, (_m: string, c: string) => '<code>' + c + '</code>')
+  s = s.replace(/\*\*([^*]+)\*\*/g, (_m: string, c: string) => '<strong>' + c + '</strong>')
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m: string, t: string, u: string) => '<a href="' + u + '">' + t + '</a>')
   return s
 }
-function slugify(s) {
+function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
-export function renderDocs(md) {
+export function renderDocs(md: string) {
   const lines = md.split('\n')
   const out = []
   const toc = []
@@ -40,7 +40,7 @@ export function renderDocs(md) {
     if (line.startsWith('|')) {
       const rows = []
       while (i < lines.length && lines[i].startsWith('|')) { rows.push(lines[i]); i++ }
-      const cells = (r) => r.split('|').slice(1, -1).map((c) => c.trim())
+      const cells = (r: string) => r.split('|').slice(1, -1).map((c) => c.trim())
       const header = cells(rows[0])
       const body = rows.slice(2).map(cells)
       out.push('<div class="tw"><table><thead><tr>' + header.map((h) => '<th>' + inlineMd(h) + '</th>').join('') + '</tr></thead><tbody>' +
