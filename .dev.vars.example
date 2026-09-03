@@ -17,3 +17,16 @@ SITE_PASSWORD=
 # on go.yourbrand.com). Cosmetic: it sets what the dashboard shows and the QR
 # encodes. Your links already resolve on every host bound to the Worker.
 # LINK_HOST=go.yourbrand.com
+
+# Optional. Put the dashboard on its own host instead of on the short domain.
+# When set, the short domain becomes redirect-only and the dashboard lives here
+# (e.g. dash.yourbrand.com). Pair it with LINK_HOST set to your short domain so
+# the dashboard shows the right short URLs. Leave unset to keep the dashboard on
+# the short domain itself, at /app. (An `app.` subdomain also always works.)
+# DASH_HOST=dash.yourbrand.com
+
+# Optional. The path the dashboard lives at ON the short domain, when there is
+# no DASH_HOST. Defaults to "app" (dashboard at yourshort.domain/app). Change it
+# to free up "app" as a normal short link. One path segment; letters, digits,
+# "-" and "_".
+# DASH_PATH=console
