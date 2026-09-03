@@ -68,6 +68,7 @@ export function setupPage(): string {
 const ERRORS: Record<string, string> = {
   badurl: 'That doesn’t look like a valid http(s) link.',
   badslug: 'A custom slug can only use letters, numbers, - and _.',
+  db: 'The database had a problem saving that. Try again in a moment.',
   taken: 'That slug is already in use. Try another.',
   reserved: 'That slug is reserved. Try another.',
   badexp: 'The expiry date isn’t valid.',

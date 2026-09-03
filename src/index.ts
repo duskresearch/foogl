@@ -125,7 +125,24 @@ app.use('*', async (c, next) => {
 app.get('/login', async (c) =>
   c.html((await hasPassword(c.env)) ? loginPage(c.req.query('error')) : setupPage()),
 )
-app.post('/login', handleLogin)
+// Best-effort brute-force brake, per isolate: five bad passwords from one
+// address buys a minute of lockout. Real rate limiting belongs in front (WAF);
+// this makes unattended guessing expensive even on a bare deploy.
+const loginFails = new Map<string, { n: number; until: number }>()
+app.post('/login', async (c) => {
+  const ip = c.req.header('cf-connecting-ip') || 'local'
+  const f = loginFails.get(ip)
+  if (f && f.until > Date.now()) return c.redirect('/login?error=wrong')
+  const res = await handleLogin(c)
+  if ((res.headers.get('location') || '').includes('error=wrong')) {
+    const n = (f?.n ?? 0) + 1
+    loginFails.set(ip, { n, until: n >= 5 ? Date.now() + 60_000 : 0 })
+    if (loginFails.size > 10_000) loginFails.clear()
+  } else {
+    loginFails.delete(ip)
+  }
+  return res
+})
 app.post('/logout', handleLogout)
 
 // ───────────────────────────────────────────────────────────
@@ -230,7 +247,9 @@ app.post('/api/settings/token', gate, async (c) => {
   const form = await c.req.parseBody()
   if (form.action === 'revoke') {
     await setSetting(c.env, 'api_token', null)
-    return c.redirect('/settings?saved=token_off')
+    // Honesty over comfort: if an env-var token exists, clearing the stored one
+    // does NOT turn the API off, and the banner must say so.
+    return c.redirect(c.env.API_TOKEN ? '/settings?saved=token_off_env' : '/settings?saved=token_off')
   }
   await setSetting(c.env, 'api_token', generateToken())
   return c.redirect('/settings?saved=token_new')
@@ -496,6 +515,20 @@ app.get('/:slug', async (c) => {
   return c.redirect(dest, code)
 })
 
+// Last resort: never show visitors a bare "Internal Server Error". A missing
+// migration says what to run; a D1 blip on a short-link path bounces to the
+// operator's main site instead of stranding the click.
+app.onError((err, c) => {
+  const msg = String((err as Error)?.message ?? err)
+  console.error('unhandled', msg)
+  if (msg.includes('no such table')) {
+    return c.text('Database not initialised. Run the migrations: npx wrangler d1 migrations apply foogl-db --remote (npm run deploy does this for you).', 500)
+  }
+  const path = new URL(c.req.url).pathname
+  if (/^\/[a-zA-Z0-9_-]+$/.test(path) && c.env.ROOT_URL) return c.redirect(c.env.ROOT_URL, 302)
+  return c.text('Something went wrong. It has been logged.', 500)
+})
+
 export default app
 
 // ───────────────────────────────────────────────────────────
@@ -538,11 +571,15 @@ async function createLink(
   env: Env,
   input: CreateInput,
 ): Promise<{ ok: true; slug: string } | { ok: false; error: string }> {
-  const url = (input.url ?? '').trim()
-  if (!isValidUrl(url)) return { ok: false, error: 'badurl' }
+  const rawUrl = (input.url ?? '').trim()
+  if (rawUrl.length > 2048 || !isValidUrl(rawUrl)) return { ok: false, error: 'badurl' }
+  // Store the parsed form: new URL() strips stray tab/newline characters that
+  // would otherwise make workerd throw on the Location header at redirect time.
+  const url = new URL(rawUrl).toString()
+  const wasAuto = !(input.slug ?? '').trim()
   let slug = (input.slug ?? '').trim()
   if (!slug) slug = randomSlug()
-  if (!/^[a-zA-Z0-9_-]+$/.test(slug)) return { ok: false, error: 'badslug' }
+  if (slug.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(slug)) return { ok: false, error: 'badslug' }
   if (RESERVED.has(slug.toLowerCase())) return { ok: false, error: 'reserved' }
   const exp = normalizeExpiry(input.expires_at)
   if (exp === false) return { ok: false, error: 'badexp' }
@@ -551,14 +588,25 @@ async function createLink(
   const rules = parsed.rules.length ? JSON.stringify(parsed.rules) : null
   // When the caller doesn't specify, fall back to the operator's default.
   const permanent = input.permanent === undefined ? await defaultPermanent(env) : input.permanent
-  try {
-    await env.DB.prepare(
-      'INSERT INTO links (slug, url, og_title, og_description, og_image, expires_at, passthrough, permanent, hide_referrer, rules) VALUES (?,?,?,?,?,?,?,?,?,?)',
-    )
-      .bind(slug, url, input.og_title ?? null, input.og_description ?? null, input.og_image ?? null, exp, input.passthrough ? 1 : 0, permanent ? 1 : 0, input.hide_referrer ? 1 : 0, rules)
-      .run()
-  } catch {
-    return { ok: false, error: 'taken' }
+  const og = (v: unknown, max: number) => (v == null || v === '' ? null : String(v).slice(0, max))
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await env.DB.prepare(
+        'INSERT INTO links (slug, url, og_title, og_description, og_image, expires_at, passthrough, permanent, hide_referrer, rules) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      )
+        .bind(slug, url, og(input.og_title, 200), og(input.og_description, 500), og(input.og_image, 1024), exp, input.passthrough ? 1 : 0, permanent ? 1 : 0, input.hide_referrer ? 1 : 0, rules)
+        .run()
+      break
+    } catch (e) {
+      const m = String((e as Error)?.message ?? e)
+      // Only a UNIQUE violation means "taken"; anything else is a database
+      // problem and saying "taken" would send the user hunting for a free slug.
+      if (m.includes('UNIQUE')) {
+        if (wasAuto && attempt < 3) { slug = randomSlug(); continue }
+        return { ok: false, error: 'taken' }
+      }
+      return { ok: false, error: 'db' }
+    }
   }
   return { ok: true, slug }
 }

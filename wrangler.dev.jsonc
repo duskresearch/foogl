@@ -1,0 +1,10 @@
+// Local test config only: no routes, so wrangler dev serves a plain localhost
+// instance instead of simulating the foo.gl marketing host. Not deployed.
+{
+  "name": "foogl-devtest",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "d1_databases": [
+    { "binding": "DB", "database_name": "foogl-db", "database_id": "local-dev", "migrations_dir": "migrations" }
+  ]
+}

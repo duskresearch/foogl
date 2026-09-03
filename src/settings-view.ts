@@ -14,6 +14,7 @@ const NOTICES: Record<string, string> = {
   general: 'Settings saved.',
   token_new: 'New API token generated. It’s shown below, so copy it now.',
   token_off: 'The HTTP API is now off.',
+  token_off_env: 'Stored token cleared, but the API_TOKEN environment variable still enables the API. Remove it with: npx wrangler secret delete API_TOKEN',
   password: 'Password updated.',
 }
 const ERRORS: Record<string, string> = {
